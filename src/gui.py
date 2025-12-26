@@ -20,8 +20,7 @@ warnings.filterwarnings('ignore')
 LANG_MAP = {
     "window_title": {"cn": "比率成像分析器 (Ver 1.7 - JOSS)", "en": "Ratio Imaging Analyzer (Ver 1.7 - JOSS)"},
     "header_title": {"cn": "Ratio Imaging Analyzer (RIA)", "en": "Ratio Imaging Analyzer (RIA)"},
-    # ... (为了节省篇幅，这里请把之前 V1.7 代码里的 LANG_MAP 字典完整复制过来) ...
-    # 务必把之前的 LANG_MAP 完整内容贴在这里
+
     # Groups
     "grp_file": {"cn": "1. 文件加载 (File Loading)", "en": "1. File Loading"},
     "grp_calc": {"cn": "2. 参数计算 (Calculation)", "en": "2. Calculation"},
@@ -108,10 +107,6 @@ class RatioAnalyzerApp:
 
     def t(self, key):
         return LANG_MAP[key][self.current_lang]
-
-    # ... (这里省略 setup_ui, create_slider 等辅助 UI 函数，请直接复制 V1.7 的代码) ...
-    # ... 为了保持整洁，请把 V1.7 的 setup_ui 到 create_player_bar 的代码全部贴在这里 ...
-    # 下面我只列出被修改的核心逻辑函数
 
     def setup_ui(self):
         # 1. Top Header
@@ -337,8 +332,6 @@ class RatioAnalyzerApp:
     def recalc_background(self):
         if self.data1 is None: return
         try:
-            # 这里的计算逻辑已经移到了 processing.py，我们只调用它
-            # 但是由于需要缓存 bg1/bg2 给后面的函数用，所以这里调用后保存结果
             p = self.var_bg.get()
             self.cached_bg1 = calculate_background(self.data1, p)
             self.cached_bg2 = calculate_background(self.data2, p)
@@ -366,7 +359,6 @@ class RatioAnalyzerApp:
         except Exception as e: messagebox.showerror("Error", str(e))
         finally: self.root.config(cursor="")
 
-    # 注意：get_processed_frame 现在调用 processing.py 里的纯函数
     def get_processed_frame(self, frame_idx):
         if self.data1 is None: return None
         
@@ -417,15 +409,6 @@ class RatioAnalyzerApp:
         self.ax.format_coord = format_coord
         self.canvas.draw_idle()
 
-    # ... (Rest of GUI methods like update_cmap, activate_roi_drawer ... same as V1.7)
-    # 为了节省篇幅，请复制 V1.7 版本中 update_cmap 及其之后的所有方法到这里
-    # 注意：在 calc_and_show_curve 中，也要用 process_frame_ratio 或者类似的矢量化方法
-    # 其实 V1.7 的 plot_roi_curve 用的是 bulk calculation (对整个ROI slice运算)，这非常高效，保留即可。
-    
-    # 唯一需要确保的是：如果 plot_roi_curve 里有重复的数学逻辑（比如扣背景），最好也提取出来。
-    # 但为了方便，V1.7 的 plot_roi_curve 逻辑可以直接用。
-    
-    # 请把 V1.7 代码中 update_cmap 到底部的所有代码贴在这里
     def update_cmap(self):
         if self.im_object is None: return
         cmap = plt.get_cmap(self.cmap_var.get()).copy()

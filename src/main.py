@@ -1,5 +1,5 @@
 import tkinter as tk
-# 确保在 src 目录下运行时能找到 gui
+
 try:
     from gui import RatioAnalyzerApp
 except ImportError:
