@@ -14,10 +14,13 @@ import requests     # 新增：用于API请求
 import webbrowser   # 新增：用于打开浏览器
 import json         # 新增：解析JSON
 
+# 尝试导入处理模块
 try:
-    from .processing import calculate_background, process_frame_ratio
-except ImportError:
+    # 优先尝试绝对导入 (适用于大多数直接运行和打包情况)
     from processing import calculate_background, process_frame_ratio
+except ImportError:
+    # 如果是在包结构中运行，使用相对导入
+    from .processing import calculate_background, process_frame_ratio
 
 warnings.filterwarnings('ignore')
 
