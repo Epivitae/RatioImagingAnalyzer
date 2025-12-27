@@ -1,7 +1,3 @@
-# ==============================================================================
-# README.md (完整版，包含图片引用)
-# ==============================================================================
-
 # Ratio Imaging Analyzer (RIA)
 
  ![Version](https://img.shields.io/badge/version-v1.7.5-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Python](https://img.shields.io/badge/python-3.8%2B-yellow)
