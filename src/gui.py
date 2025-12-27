@@ -97,11 +97,28 @@ class RatioAnalyzerApp:
     def __init__(self, root):
         self.root = root
         # --- 定义当前版本号 ---
-        self.VERSION = "v1.7.1"
+        self.VERSION = "v1.7.2"
         self.current_lang = "cn"
         self.ui_elements = {}
         self.root.geometry("1280x850")
-        
+        try:
+            import ctypes
+            myappid = 'cns.ria.analyzer.1.0' 
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+
+            project_root = os.path.dirname(current_dir)
+
+            icon_path = os.path.join(project_root, "assets", "ratiofish.ico")
+
+            if os.path.exists(icon_path):
+                self.root.iconbitmap(icon_path)
+            else:
+                print(f"Warning: Icon file not found at {icon_path}")
+
+        except Exception as e:
+            print(f"Warning: Could not load icon. {e}")
         self.data1 = None; self.data2 = None
         self.cached_bg1 = 0; self.cached_bg2 = 0
         self.im_object = None; self.ax = None; self.cbar = None
