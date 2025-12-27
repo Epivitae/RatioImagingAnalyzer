@@ -1,19 +1,25 @@
-import tkinter as tk
 import sys
 import os
+import tkinter as tk
 
-# 确保能找到当前目录下的模块
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# 将当前目录添加到系统路径，确保能找到同级模块
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(current_dir)
 
+# 尝试直接导入
 try:
     from gui import RatioAnalyzerApp
 except ImportError:
-    from .gui import RatioAnalyzerApp
+    # 如果失败，尝试作为包导入（通常在打包环境下不应该走到这里，但为了保险）
+    try:
+        from src.gui import RatioAnalyzerApp
+    except ImportError as e:
+        # 如果还不行，打印详细错误并抛出
+        print(f"Error importing GUI: {e}")
+        raise
 
 def main():
     root = tk.Tk()
-    # 可以设置默认图标等
-    # root.iconbitmap('icon.ico') 
     app = RatioAnalyzerApp(root)
     root.mainloop()
 
