@@ -19,7 +19,7 @@ except ImportError:
 warnings.filterwarnings('ignore')
 
 LANG_MAP = {
-    "window_title": {"cn": "比率成像分析器 (Ver 1.0.0)", "en": "Ratio Imaging Analyzer (Ver 1.0.0)"},
+    "window_title": {"cn": "比率成像分析器 (Ver 1.2.0)", "en": "Ratio Imaging Analyzer (Ver 1.2.0)"},
     "header_title": {"cn": "Ratio Imaging Analyzer (RIA)", "en": "Ratio Imaging Analyzer (RIA)"},
     
     "grp_file": {"cn": "1. 文件加载", "en": "1. File Loading"},
