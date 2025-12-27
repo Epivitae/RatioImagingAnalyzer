@@ -1,111 +1,108 @@
-# 🔬 Ratio Imaging Analyzer
+# ==============================================================================
+# README.md (完整版，包含图片引用)
+# ==============================================================================
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python)](https://www.python.org/)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+# Ratio Imaging Analyzer (RIA)
 
-**🌍 [English](#english-description) | 🇨🇳 [中文说明](#中文说明)**
+ ![Version](https://img.shields.io/badge/version-v1.7.5-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Python](https://img.shields.io/badge/python-3.8%2B-yellow)
 
----
+ **Ratio Imaging Analyzer (RIA)** is a lightweight, user-friendly tool designed for 
+ processing and analyzing dual-channel ratiometric fluorescence microscopy data. 
+ It is widely used in research fields such as **calcium imaging**, **FRET biosensors**, 
+ and **metabolic imaging** (e.g., NADH/NAD+, ATP).
 
-## 📖 English Description
+ **RIA (比率成像分析器)** 是一款轻量级、用户友好的科研工具，专为处理双通道比率型荧光
+ 显微成像数据而设计。广泛应用于**钙成像**、**FRET 生物传感器**以及**代谢成像**研究中。
 
-**Ratio Imaging Analyzer** is a lightweight, professional desktop application for **ratiometric fluorescence imaging analysis** (e.g., *Fura-2, GCaMP/RFP, or other dual-channel indicators*).
-Built with **Python (Tkinter + Matplotlib)**, it provides a responsive interface for researchers to **visualize, process, and quantify imaging data in real-time**.
+ ---
 
----
+ ## 📸 Demo (功能演示)
 
-### ✨ Key Features
+ ### 1. Automated Workflow (自动化处理流程)
+ Easily load Channel 1 and Channel 2 TIFF stacks. The software automatically aligns, 
+ subtracts background, and generates the ratiometric heatmap instantly.
+ 轻松加载双通道 TIFF 序列。软件自动完成对齐、背景扣除，并即时生成比率伪彩热图。
 
-| Category                             | Features                                                                                                                                               |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 🧪**Dual-Channel Processing**  | Load two TIFF stacks (Channel 1 & Channel 2) → calculate ratio image ($C1 / C2$).                                                                   |
-| ⚙️**Real-time Adjustment**   | • Background subtraction (percentile-based)`<br>`• Smart thresholding (Intensity/Ratio)`<br>`• Smoothing filters `<br>`• Logarithmic scaling |
-| 🎯**Interactive ROI Analysis** | • Draw & drag ROIs `<br>`• Instant curve updates `<br>`• Multi-unit time axis (s / m / h)`<br>`• Export ROI data to clipboard                |
-| 💾**Data Export**              | • Save single frame as `.tif<br>`• Batch export entire stack as multi-page `.tif`                                                                |
-| 🖥️**User Experience**        | • Bilingual interface (EN/中文)`<br>`• Native Matplotlib toolbar `<br>`• Custom colormaps & NaN background colors                               |
+ ![Workflow Demo](assets/figure/analysis.gif)
+ *Figure 1: Demonstration of loading data, adjusting threshold parameters, and applying smart range locking. (图1：演示数据加载、阈值参数调整及智能范围锁定功能)*
 
----
+ <br>
 
-### 🛠️ Installation & Requirements
+ ### 2. Interactive Analysis & Live Monitoring (交互分析与实时监测)
+ Draw Regions of Interest (ROI) to extract mean ratio values. The **"Live Monitor"** # feature updates the plotting curve in real-time as you drag the player or adjust thresholds.
+ 绘制感兴趣区域 (ROI) 以提取平均比率值。**“实时监测”**功能允许在拖动播放进度条或调整
+ 阈值参数时，实时刷新并显示动态曲线。
 
-Ensure **Python 3.8+** is installed. Required libraries:
+ ![Live Plotting Demo](assets/figure/live-plot.gif)
+ *Figure 2: Real-time ROI drawing, curve generation, and data interaction. (图2：实时 ROI 绘制、曲线生成及数据交互演示)*
 
-```bash
-pip install numpy matplotlib scipy tifffile
-```
+ ---
 
-### 🚀 How to Run
+ ## ✨ Key Features (核心功能)
 
-Clone this repository or download the source code, then run:
+ ### 1. Image Processing (图像处理)
+ * **Dual-Channel Ratiometric Calculation**: Automatically computes $Ch1 / Ch2$ pixel-by-pixel.
+ * **Smart Background Subtraction**: Percentile-based background estimation to remove noise.
+ * **NaN-Safe Smoothing**: Custom algorithm to smooth images without edge artifacts or NaN propagation.
+ * **Thresholding**: Filter out background noise based on intensity and ratio limits.
 
-bash
+ ### 2. Visualization (可视化)
+ * **Dynamic Colormaps (LUTs)**: Supports `coolwarm`, `jet`, `viridis`, and more.
+ * **Smart Range Locking**: One-click auto-ranging based on global **P1 (1st percentile)** #   and **P99 (99th percentile)** to ignore hot pixels and outliers.
+ * **Log Scale**: Support for logarithmic display to view wide-dynamic-range data.
+ * **Transparent Background**: Option to make the background transparent for better presentation.
 
-```
-python ImageRatio.py
-```
+ ### 3. Data Analysis & Export (分析与导出)
+ * **Interactive ROI**: Draw rectangular ROIs to extract mean ratio values over time.
+ * **Data Export**:
+     * **Save Frame**: Export current view as a TIFF image.
+     * **Save Stack**: Export the fully processed (colorized) video stack.
+     * **Save Raw Ratio**: Export the raw, unprocessed float32 ratio data for downstream analysis.
+     * **Clipboard Support**: One-click copy of plotting data (Time vs. Ratio) to Excel/Origin.
 
-*(Replace *`ImageRatio.py`* with your actual filename if different)*
+ ### 4. User Experience (用户体验)
+ * **Bilingual Interface**: Toggle between English and Chinese (中文) instantly.
+ * **Responsive UI**: Smooth window resizing with layout protection.
+ * **Font Scaling**: Adjustable font sizes for high-resolution screens.
 
-### 📦 Build Executable (.exe)
+ ---
 
-To create a standalone `.exe` for Windows users (no Python required):
+ ## 🛠️ Quick Start (快速开始)
 
-bash
+ ### Option 1: Run the Executable (Recommended)
+ Simply download the latest `RatioImagingAnalyzer_v1.7.5.exe` from the 
+ [Releases](https://github.com/Epivitae/RatioImagingAnalyzer/releases) page and double-click to run. 
+ No installation required.
 
-```
-pyinstaller --noconsole --onefile --hidden-import=tifffile ImageRatio.py
-```
+ ### Option 2: Run from Source
+ If you prefer running from Python source code:
 
-⚠️  **Important** : Always include `--hidden-import=tifffile`, otherwise TIFF files may fail to load.
+ 1.  **Clone the repository:**
+     ```bash
+     git clone [https://github.com/Epivitae/RatioImagingAnalyzer.git](https://github.com/Epivitae/RatioImagingAnalyzer.git)
+     cd RatioImagingAnalyzer
+     ```
 
-`<a name="chinese"></a>`
+ 2.  **Install dependencies:**
+     ```bash
+     pip install -r requirements.txt
+     ```
+     *(Dependencies include: `numpy`, `matplotlib`, `tifffile`, `requests`)*
 
-## 📖 中文说明
+ 3.  **Run the application:**
+     ```bash
+     python src/main.py
+     ```
 
-**ImageRatio** 是一款专为  **比率荧光成像分析** （如  *Fura-2, GCaMP/RFP 等双通道指示剂* ）设计的轻量级桌面软件。
-基于 **Python (Tkinter + Matplotlib)** 开发，科研人员无需编写代码即可  **实时处理、可视化和定量分析成像数据** 。
+ ---
 
-### ✨ 主要功能
+ ## 📧 Contact
 
-| 分类                       | 功能                                                                               |
-| -------------------------- | ---------------------------------------------------------------------------------- |
-| 🧪**双通道处理**     | 加载两个TIFF序列（通道1&通道2），自动计算比率图像(C1/C2)。                         |
-| ⚙️**实时参数调节** | •背景扣除（百分位数法）``•智能阈值（强度/比率）``•平滑处理``•对数变换          |
-| 🎯**交互式ROI分析**  | •绘制与拖动ROI ``•曲线实时更新``•多时间单位（秒/分/时）``•一键复制数据到剪贴板 |
-| 💾**数据保存**       | •保存单帧为 `<span>.tif</span>`•批量保存为多页 `<span>.tif</span>`           |
-| 🖥️**用户体验**     | •中英双语界面 ``•内置Matplotlib工具栏``•自定义伪彩与背景颜色                    |
+ * **Author**: Dr. Kui Wang
+ * **Website**: [https://www.cns.ac.cn](https://www.cns.ac.cn)
+ * **Email**: k@cns.ac.cn
 
-### 🛠️ 安装与依赖
+ If you find this tool useful for your research, please consider giving this repository a **Star** ⭐!
 
-请确保已安装  **Python 3.8+** ，并安装以下库：
-
-```
-pip install numpy matplotlib scipy tifffile
-```
-
-### 🚀 如何运行
-
-克隆仓库或下载源代码后，在终端运行：
-
-```
-python ImageRatio.py
-```
-
-*(请将 *`ImageRatio.py`* 替换为实际脚本文件名)*
-
-### 📦 打包为 Exe 可执行文件
-
-使用 **pyinstaller** 或 **auto-py-to-exe** 打包：
-
-```
-pyinstaller --noconsole --onefile --hidden-import=tifffile ImageRatio.py
-```
-
-⚠️  **注意** ：必须添加 `--hidden-import=tifffile` 参数，否则程序可能无法正确加载 TIFF 文件。
-
-## 📜 Copyright & Contact
-
-* © Dr. Kui Wang
-* 🌐 Website: www.cns.ac.cn
-* ✉️ Email: **k@cns.ac.cn**
-* 📄 License: MIT License
+ ---
+ *© 2025 Dr. Kui Wang. All rights reserved.*
