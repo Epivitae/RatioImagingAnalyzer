@@ -10,6 +10,9 @@ import os
 import warnings
 import datetime
 import threading
+import requests     # 新增：用于API请求
+import webbrowser   # 新增：用于打开浏览器
+import json         # 新增：解析JSON
 
 try:
     from .processing import calculate_background, process_frame_ratio
@@ -19,7 +22,8 @@ except ImportError:
 warnings.filterwarnings('ignore')
 
 LANG_MAP = {
-    "window_title": {"cn": "比率成像分析器 (Ver 1.2.0)", "en": "Ratio Imaging Analyzer (Ver 1.2.0)"},
+    # 更新了标题版本号
+    "window_title": {"cn": "比率成像分析器 (Ver 1.7.1)", "en": "Ratio Imaging Analyzer (Ver 1.7.1)"},
     "header_title": {"cn": "Ratio Imaging Analyzer (RIA)", "en": "Ratio Imaging Analyzer (RIA)"},
     
     "grp_file": {"cn": "1. 文件加载", "en": "1. File Loading"},
@@ -59,6 +63,13 @@ LANG_MAP = {
     
     "btn_copy_all": {"cn": "📋 复制全部数据", "en": "📋 Copy All"},
     "btn_copy_y": {"cn": "🔢 仅复制 Ratio", "en": "🔢 Copy Ratio"},
+
+    # --- 新增更新相关的翻译 ---
+    "btn_check_update": {"cn": "🔄 检查更新", "en": "🔄 Check Update"},
+    "msg_uptodate": {"cn": "当前已是最新版本！", "en": "You are up to date!"},
+    "msg_new_ver": {"cn": "发现新版本: {}\n是否前往下载？", "en": "New version found: {}\nGo to download page?"},
+    "title_update": {"cn": "版本更新", "en": "Update Check"},
+    "err_check": {"cn": "检查更新失败: ", "en": "Check failed: "},
 }
 
 class ToggledFrame(ttk.Frame):
@@ -85,6 +96,8 @@ class ToggledFrame(ttk.Frame):
 class RatioAnalyzerApp:
     def __init__(self, root):
         self.root = root
+        # --- 定义当前版本号 ---
+        self.VERSION = "v1.7.1"
         self.current_lang = "cn"
         self.ui_elements = {}
         self.root.geometry("1280x850")
@@ -116,7 +129,7 @@ class RatioAnalyzerApp:
 
         footer = tk.Frame(self.root, bg="#f5f5f5", height=25)
         footer.pack(side="bottom", fill="x")
-        ttk.Label(footer, text="© Dr. Kui Wang | k@cns.ac.cn | www.cns.ac.cn", font=("Arial", 8), foreground="#666").pack(pady=5)
+        ttk.Label(footer, text=f"© Dr. Kui Wang | {self.VERSION} | k@cns.ac.cn", font=("Arial", 8), foreground="#666").pack(pady=5)
 
         self.main_pane = ttk.PanedWindow(self.root, orient="horizontal")
         self.main_pane.pack(fill="both", expand=True, padx=5, pady=5)
@@ -273,6 +286,11 @@ class RatioAnalyzerApp:
         fr_set = ToggledFrame(grid_area, text="Settings")
         fr_set.grid(row=0, column=2, sticky="new", padx=(2, 0))
         self.ui_elements["lbl_settings"] = fr_set.lbl_title
+        
+        # --- [新增] 检查更新按钮 ---
+        self.btn_update = ttk.Button(fr_set.sub_frame, command=self.check_update_thread)
+        self.btn_update.pack(fill="x", pady=2)
+        self.ui_elements["btn_check_update"] = self.btn_update
 
     def toggle_language(self):
         self.current_lang = "en" if self.current_lang == "cn" else "cn"
@@ -567,6 +585,56 @@ class RatioAnalyzerApp:
                 self.fps = int(v.split()[0])
             except:
                 self.fps = 10
+
+    # --- 新增：检查更新相关方法 ---
+    def check_update_thread(self):
+        """在后台线程检查更新，防止界面卡顿"""
+        self.btn_update.config(state="disabled")
+        threading.Thread(target=self.check_update_task, daemon=True).start()
+
+    def check_update_task(self):
+        # 使用你提供的特定API地址
+        api_url = "https://api.github.com/repos/Epivitae/RatioImagingAnalyzer/releases/latest"
+        try:
+            response = requests.get(api_url, timeout=5)
+            response.raise_for_status() 
+            data = response.json()
+            
+            latest_tag = data.get("tag_name", "").strip() # 例如 "v1.7.2"
+            html_url = data.get("html_url", "")
+            
+            # 使用简单的版本对比逻辑
+            if self.is_newer_version(latest_tag, self.VERSION):
+                self.root.after(0, lambda: self.ask_download(latest_tag, html_url))
+            else:
+                self.root.after(0, lambda: messagebox.showinfo(self.t("title_update"), self.t("msg_uptodate")))
+                
+        except Exception as e:
+            # 报错
+            self.root.after(0, lambda: messagebox.showerror("Error", f"{self.t('err_check')}{str(e)}"))
+        finally:
+            self.root.after(0, lambda: self.btn_update.config(state="normal"))
+
+    def is_newer_version(self, latest, current):
+        """
+        对比版本号。例如: latest='v1.8.0', current='v1.7.1' -> True
+        """
+        def parse_ver(v_str):
+            # 去掉 'v' 或 'ver'，然后按点分割转成数字列表
+            v_clean = v_str.lower().replace("v", "").replace("ver", "")
+            try:
+                return [int(x) for x in v_clean.split('.')]
+            except:
+                return [0, 0, 0]
+        
+        l_list = parse_ver(latest)
+        c_list = parse_ver(current)
+        return l_list > c_list
+
+    def ask_download(self, version, url):
+        msg = self.t("msg_new_ver").format(version)
+        if messagebox.askyesno(self.t("title_update"), msg):
+            webbrowser.open(url)
 
 if __name__ == "__main__":
     root = tk.Tk()
