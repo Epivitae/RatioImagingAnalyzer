@@ -1,6 +1,5 @@
 # Ratio Imaging Analyzer (RIA)
 
-<<<<<<< HEAD
 [![Status](https://joss.theoj.org/papers/please-replace-with-your-id/status.svg)](https://joss.theoj.org/papers/please-replace-with-your-id)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
