@@ -117,13 +117,13 @@ This software relies on the following open-source libraries and methods:
 
 ## 🖊️ Citation
 
-If you use this software in your research, please cite our software DOI or the associated JOSS paper (under review):
+# If you use this software in your research, please cite our software DOI or the associated JOSS paper (under review):
 
-```bibtex
-@software{ria_software,
-  author = {Wang, Kui},
-  title = {Ratio Imaging Analyzer (RIA)},
-  year = {2025},
-  url = {[https://github.com/Epivitae/RatioImagingAnalyzer](https://github.com/Epivitae/RatioImagingAnalyzer)}
-}
-```
+# ```bibtex
+# @software{ria_software,
+#   author = {Wang, Kui},
+#   title = {Ratio Imaging Analyzer (RIA)},
+#   year = {2025},
+#   url = {[https://github.com/Epivitae/RatioImagingAnalyzer](https://github.com/Epivitae/RatioImagingAnalyzer)}
+# }
+# ```
