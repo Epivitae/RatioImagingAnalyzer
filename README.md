@@ -10,7 +10,7 @@ Ratiometric imaging is a powerful technique for visualizing dynamic biological p
 
 It provides a user-friendly Graphical User Interface (GUI) to perform background subtraction, thresholding, and real-time ROI (Region of Interest) analysis without requiring any programming knowledge.
 
-![RIA Interface](paper/images/figure1.png)
+![RIA Interface](assets/figure/analysis.gif)
 
 ## ✨ Key Features
 
@@ -47,7 +47,7 @@ RatioImagingAnalyzer/
 
 1. **Clone the repository:**
 
-   git clone https://github.com/Epivitae/RatioImagingAnalyzer.git)
+   git clone https://github.com/Epivitae/RatioImagingAnalyzer.git
    cd RatioImagingAnalyzer
 2. **Install dependencies:**
    It is recommended to use a virtual environment.

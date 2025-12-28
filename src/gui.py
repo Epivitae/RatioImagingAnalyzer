@@ -1,3 +1,4 @@
+# src/gui.py
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, Toplevel
 import tkinter.font as tkfont
@@ -16,12 +17,27 @@ import requests
 import webbrowser
 from PIL import Image, ImageTk
 
-# --- Attempt to import processing logic ---
+# --- 引入新拆分出的模块 ---
 try:
-    from processing import calculate_background, process_frame_ratio
+    # 尝试相对导入 (当作为包运行 python -m src.main 时)
+    from .constants import LANG_MAP
+    from .components import ToggledFrame
+    from .io_utils import read_and_split_dual_channel, read_separate_files
+except ImportError:
+    # 尝试绝对导入 (当直接运行 gui.py 时)
+    try:
+        from constants import LANG_MAP
+        from components import ToggledFrame
+        from io_utils import read_and_split_dual_channel, read_separate_files
+    except ImportError as e:
+        print(f"Import Error: {e}. Make sure constants.py, components.py, and io_utils.py exist.")
+
+# --- 尝试引入计算模块 ---
+try:
+    from .processing import calculate_background, process_frame_ratio
 except ImportError:
     try:
-        from .processing import calculate_background, process_frame_ratio
+        from processing import calculate_background, process_frame_ratio
     except ImportError:
         pass 
 
@@ -35,157 +51,69 @@ except ImportError:
 
 warnings.filterwarnings('ignore')
 
-# --- 1. Define Language Map ---
-LANG_MAP = {
-    "window_title": {"cn": "比率成像分析器 ({})", "en": "Ratio Imaging Analyzer ({})"},
-    "header_title": {"cn": "Ratio Imaging Analyzer (RIA)", "en": "Ratio Imaging Analyzer (RIA)"},
-    "grp_file": {"cn": "1. 文件加载", "en": "1. File Loading"},
-    "btn_c1": {"cn": "📂 通道 1", "en": "📂 Ch1"},
-    "btn_c2": {"cn": "📂 通道 2", "en": "📂 Ch2"},
-    "btn_load": {"cn": "🚀 加载并分析", "en": "🚀 Load & Analyze"},
-    "lbl_no_file": {"cn": "...", "en": "..."},
-    "grp_calc": {"cn": "2. 参数计算", "en": "2. Calculation"},
-    "lbl_int_thr": {"cn": "强度阈值", "en": "Int. Min"},
-    "lbl_ratio_thr": {"cn": "比率阈值", "en": "Ratio Min"},
-    "lbl_smooth": {"cn": "平滑 (Smooth)", "en": "Smooth"},
-    "lbl_bg": {"cn": "背景扣除 %", "en": "BG %"},
-    "chk_log": {"cn": "📈 Log (对数显示)", "en": "📈 Log Scale"},
-    "grp_view": {"cn": "3. 显示设置", "en": "3. Display Settings"},
-    "lbl_cmap": {"cn": "伪彩:", "en": "Colormap:"},
-    "lbl_bg_col": {"cn": "背景色:", "en": "BG Color:"},
-    "chk_lock": {"cn": "🔒 锁定范围", "en": "🔒 Lock Range"},
-    "btn_apply": {"cn": "应用", "en": "Apply"},
-    "lbl_roi_tools": {"cn": "🛠️ ROI & 测量", "en": "🛠️ ROI & Measurement"},
-    "lbl_export": {"cn": "💾 数据导出", "en": "💾 Data Export"},
-    "lbl_settings": {"cn": "⚙️ 其他设置", "en": "⚙️ Settings"},
-    "btn_draw": {"cn": "✏️ 绘制 ROI", "en": "✏️ Draw ROI"},
-    "btn_clear": {"cn": "❌ 清除", "en": "❌ Clear"},
-    "btn_plot": {"cn": "📈 生成曲线", "en": "📈 Plot Curve"},
-    "btn_save_stack": {"cn": "💾 保存序列 (Stack)", "en": "💾 Save Stack"},
-    "btn_save_raw": {"cn": "💽 保存原始比值 (Raw)", "en": "💽 Save Raw Ratio"}, 
-    "btn_save_frame": {"cn": "📷 保存当前帧", "en": "📷 Save Frame"}, 
-    "chk_live": {"cn": "🔴 实时监测 (Live)", "en": "🔴 Live Monitor"},
-    "lbl_interval": {"cn": "Imaging Interval (s):", "en": "Imaging Interval (s):"}, 
-    "lbl_unit": {"cn": "Plotting Unit:", "en": "Plotting Unit:"},
-    "lbl_speed": {"cn": "倍速:", "en": "Speed:"},
-    "btn_copy_all": {"cn": "📋 复制全部数据", "en": "📋 Copy All"},
-    "btn_copy_y": {"cn": "🔢 仅复制 Ratio", "en": "🔢 Copy Ratio"},
-    "btn_check_update": {"cn": "🔄 检查更新", "en": "🔄 Check Update"},
-    "btn_contact": {"cn": "📧 联系作者", "en": "📧 Contact Author"},
-    "msg_uptodate": {"cn": "当前已是最新版本！", "en": "You are up to date!"},
-    "msg_new_ver": {"cn": "发现新版本: {}\n是否前往下载？", "en": "New version found: {}\nGo to download page?"},
-    "title_update": {"cn": "版本更新", "en": "Update Check"},
-    "err_check": {"cn": "检查更新失败: ", "en": "Check failed: "},
-}
-
-# --- 2. Define ToggledFrame Class ---
-class ToggledFrame(ttk.Frame):
-    def __init__(self, parent, text="", *args, **options):
-        # Default to Card style unless specified
-        if "style" not in options:
-            options["style"] = "Card.TFrame"
-            
-        ttk.Frame.__init__(self, parent, *args, **options)
-        
-        self.show = tk.IntVar()
-        self.show.set(0)
-        
-        self.title_frame = ttk.Frame(self, style="Card.TFrame")
-        self.title_frame.pack(fill="x", expand=1)
-        
-        self.toggle_btn = ttk.Checkbutton(
-            self.title_frame, 
-            width=2, 
-            text='▶', 
-            command=self.toggle, 
-            variable=self.show, 
-            style='Toolbutton'
-        )
-        self.toggle_btn.pack(side="left")
-        
-        self.lbl_title = ttk.Label(self.title_frame, text=text, style="Blue.TLabel")
-        self.lbl_title.pack(side="left", padx=5)
-        
-        self.sub_frame = ttk.Frame(self, relief="flat", borderwidth=0, padding=5, style="Card.TFrame")
-
-    def toggle(self):
-        if self.show.get():
-            self.sub_frame.pack(fill="x", expand=1, pady=(2,0))
-            self.toggle_btn.configure(text='▼')
-        else:
-            self.sub_frame.forget()
-            self.toggle_btn.configure(text='▶')
-
-
 class RatioAnalyzerApp:
     def __init__(self, root):
         self.root = root
         
-        # --- 1. Initialize core font objects ---
+        # --- Font Init ---
         self.base_font_size = 10
         self.current_font_size = self.base_font_size
-        
-        # Define dynamic font objects
         self.f_normal = tkfont.Font(family="Segoe UI", size=self.base_font_size)
         self.f_bold = tkfont.Font(family="Segoe UI", size=self.base_font_size, weight="bold")
         self.f_title = tkfont.Font(family="Helvetica", size=self.base_font_size + 8, weight="bold")
         
-        # Take over system fonts
         self.default_tk_font = tkfont.nametofont("TkDefaultFont")
         self.text_tk_font = tkfont.nametofont("TkTextFont")
         self.caption_tk_font = tkfont.nametofont("TkCaptionFont")
-
         self._resize_timer = None
 
-        # --- Style initialization ---
+        # --- Theme ---
         self.setup_theme()
         
         self.VERSION = __version__
-        self.current_lang = "en" # Default to English
+        self.current_lang = "en"
         self.ui_elements = {}
         self.root.geometry("1280x850")
         self.root.configure(bg="#F0F2F5") 
-        
         self.root.minsize(1000, 600)
         
-        # --- Icon Loading (Window & Taskbar) ---
         try:
             icon_path = self.get_asset_path("ratiofish.ico")
             if os.path.exists(icon_path):
-                # Using iconbitmap is best for Windows as it supports multi-size icons (16/32/48/256)
                 self.root.iconbitmap(default=icon_path) 
         except Exception as e:
             print(f"Warning: Failed to load icon: {e}")
 
+        # Data & Flags
         self.data1 = None; self.data2 = None
         self.cached_bg1 = 0; self.cached_bg2 = 0
         self.im_object = None; self.ax = None; self.cbar = None
-        self.c1_path = None; self.c2_path = None
-        self.is_playing = False; self.fps = 10 
         
+        # Paths
+        self.c1_path = None; self.c2_path = None
+        self.dual_path = None
+        
+        self.is_playing = False; self.fps = 10 
         self.roi_selector = None; self.roi_coords = None
         self.plot_window = None; self.plot_ax = None; self.plot_canvas = None
         self.is_calculating_roi = False 
+        
+        self.is_interleaved_var = tk.BooleanVar(value=True) 
 
         self.setup_ui()
         self.update_language()
-        
         self.change_font_size(0)
 
     def setup_theme(self):
-        """Configure modern flat theme and bind dynamic fonts."""
         style = ttk.Style()
-        try:
-            style.theme_use('clam')
-        except:
-            pass
-            
+        try: style.theme_use('clam')
+        except: pass
+        
         BG_COLOR = "#F0F2F5"
         CARD_COLOR = "#FFFFFF"
         TEXT_COLOR = "#333333"
         BLUE_COLOR = "#0056b3"
         
-        # --- Global font binding ---
         style.configure(".", background=BG_COLOR, foreground=TEXT_COLOR, font=self.f_normal)
         style.configure("TLabel", background=BG_COLOR, font=self.f_normal)
         style.configure("TButton", padding=4, font=self.f_normal)
@@ -194,7 +122,6 @@ class RatioAnalyzerApp:
         style.configure("TEntry", font=self.f_normal)
         style.configure("TCombobox", font=self.f_normal)
         
-        # --- Custom Styles ---
         style.configure("Card.TFrame", background=CARD_COLOR, relief="flat")
         style.configure("Card.TLabelframe", background=CARD_COLOR, relief="solid", borderwidth=1)
         style.configure("Card.TLabelframe.Label", background=CARD_COLOR, foreground=BLUE_COLOR, font=self.f_bold)
@@ -205,36 +132,27 @@ class RatioAnalyzerApp:
         style.configure("White.TFrame", background=CARD_COLOR)
         style.configure("Blue.TLabel", foreground=BLUE_COLOR, font=self.f_bold)
 
-        # --- Modern Toggle Button Style ---
         style.configure("Toggle.TButton", font=self.f_normal, background="#FFFFFF", borderwidth=1)
         style.map("Toggle.TButton",
             background=[("selected", "#E8F0FE"), ("active", "#F5F5F5")], 
             foreground=[("selected", BLUE_COLOR)],
             relief=[("selected", "sunken"), ("!selected", "raised")]
         )
-
-        # --- GitHub Star Style (Gold) ---
         style.configure("Starred.TButton", font=self.f_normal, foreground="#F5C518")
-        
-        # --- Compact Button Style ---
         style.configure("Compact.TButton", font=self.f_normal, padding=(2, 0))
-
-        # --- Gray Button Style (for less common actions) ---
         style.configure("Gray.TButton", font=self.f_normal, background="#E0E0E0", foreground="#555555")
         style.map("Gray.TButton",
             background=[("active", "#D5D5D5"), ("pressed", "#C0C0C0")], 
             foreground=[("active", "#333333")]
         )
-        
         self.style = style
 
     def get_asset_path(self, filename):
         if hasattr(sys, '_MEIPASS'):
             return os.path.join(sys._MEIPASS, "assets", filename)
         else:
-            current_dir = os.path.dirname(os.path.abspath(__file__)) 
-            project_root = os.path.dirname(current_dir)             
-            return os.path.join(project_root, "assets", filename)
+            # 向上寻找 assets 文件夹
+            return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", filename)
 
     def t(self, key):
         if key not in LANG_MAP: return key
@@ -293,20 +211,16 @@ class RatioAnalyzerApp:
         self.lbl_title.pack(side="left")
         self.ui_elements["header_title"] = self.lbl_title
 
-        # --- Top Button Area Layout ---
         btn_frame = ttk.Frame(header, style="Header.TFrame")
         btn_frame.pack(side="right")
         
-        # 1. Right: Font controls
         ttk.Button(btn_frame, text="A+", width=3, command=lambda: self.change_font_size(1)).pack(side="right", padx=2)
         ttk.Button(btn_frame, text="⟳", width=3, command=self.reset_font_size).pack(side="right", padx=2)
         ttk.Button(btn_frame, text="A-", width=3, command=lambda: self.change_font_size(-1)).pack(side="right", padx=2)
         
-        # 2. Middle: GitHub Link
         self.btn_github = ttk.Button(btn_frame, text="☆ GitHub", command=self.star_github)
         self.btn_github.pack(side="right", padx=10)
         
-        # 3. Left: Language Switch [Fixed]
         ttk.Button(btn_frame, text="🌐 EN/中文", command=self.toggle_language).pack(side="right", padx=2)
 
         footer = tk.Frame(self.root, bg="#F0F2F5", height=25)
@@ -323,16 +237,42 @@ class RatioAnalyzerApp:
         self.frame_left = ttk.Frame(self.frame_left_container, width=320, style="White.TFrame")
         self.frame_left.pack(fill="both", expand=True)
 
+        # --- 1. File Loading (Notebook) ---
         self.grp_file = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
         self.grp_file.pack(fill="x", pady=(0, 10))
         self.ui_elements["grp_file"] = self.grp_file
         
-        self.create_compact_file_row(self.grp_file, "btn_c1", self.select_c1, "lbl_c1_path")
-        self.create_compact_file_row(self.grp_file, "btn_c2", self.select_c2, "lbl_c2_path")
+        self.nb_import = ttk.Notebook(self.grp_file)
+        self.nb_import.pack(fill="x", expand=True)
+        self.nb_import.bind("<<NotebookTabChanged>>", lambda e: self.check_ready())
+
+        # Tab 1: Separate Files
+        self.tab_sep = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
+        self.nb_import.add(self.tab_sep, text=" Separate Files ") 
+        self.ui_elements["tab_sep"] = lambda text: self.nb_import.tab(0, text=text)
+
+        self.create_compact_file_row(self.tab_sep, "btn_c1", self.select_c1, "lbl_c1_path")
+        self.create_compact_file_row(self.tab_sep, "btn_c2", self.select_c2, "lbl_c2_path")
+
+        # Tab 2: Single Dual-File
+        self.tab_dual = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
+        self.nb_import.add(self.tab_dual, text=" Single Dual-Ch File ")
+        self.ui_elements["tab_dual"] = lambda text: self.nb_import.tab(1, text=text)
+
+        self.create_compact_file_row(self.tab_dual, "btn_dual", self.select_dual, "lbl_dual_path")
+        self.chk_inter = ttk.Checkbutton(
+            self.tab_dual, 
+            variable=self.is_interleaved_var, 
+            style="White.TCheckbutton"
+        )
+        self.chk_inter.pack(fill="x", pady=5)
+        self.ui_elements["chk_interleaved"] = self.chk_inter
+
         self.btn_load = ttk.Button(self.grp_file, command=self.load_data, state="disabled")
-        self.btn_load.pack(fill="x", pady=5)
+        self.btn_load.pack(fill="x", pady=(10, 0))
         self.ui_elements["btn_load"] = self.btn_load
 
+        # --- 2. Calculation Group ---
         self.grp_calc = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
         self.grp_calc.pack(fill="x", pady=(0, 10))
         self.ui_elements["grp_calc"] = self.grp_calc
@@ -350,6 +290,7 @@ class RatioAnalyzerApp:
         self.chk_log.pack(fill="x", pady=2) 
         self.ui_elements["chk_log"] = self.chk_log
 
+        # --- 3. View Settings ---
         self.grp_view = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
         self.grp_view.pack(fill="x", pady=(0, 10))
         self.ui_elements["grp_view"] = self.grp_view
@@ -366,7 +307,6 @@ class RatioAnalyzerApp:
         
         self.bg_color_var = tk.StringVar(value="Trans")
         ttk.OptionMenu(f_grid, self.bg_color_var, "Trans", "Trans", "Black", "White", command=lambda _: self.update_cmap()).grid(row=1, column=1, sticky="ew", pady=5)
-
         f_grid.columnconfigure(1, weight=1) 
 
         self.lock_var = tk.BooleanVar(value=False)
@@ -385,38 +325,27 @@ class RatioAnalyzerApp:
         self.btn_apply.pack(side="right", padx=2, fill="y")
         self.ui_elements["btn_apply"] = self.btn_apply
 
-        # --- Bottom Brand Logo (Using PIL for high-quality scaling) ---
+        # --- Brand Logo ---
         self.fr_brand = ttk.Frame(self.frame_left, style="White.TFrame")
         self.fr_brand.pack(side="bottom", fill="x", pady=(30, 10))
-
         inner_box = ttk.Frame(self.fr_brand, style="White.TFrame")
         inner_box.pack(anchor="center")
 
         try:
             icon_path = self.get_asset_path("ratiofish.ico")
             if os.path.exists(icon_path):
-                # Use PIL to read and resize
                 pil_img = Image.open(icon_path)
-                
-                # Resize icon to 64x64 for better visibility
                 icon_size = 64
                 pil_img = pil_img.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
-                
                 self.brand_icon_img = ImageTk.PhotoImage(pil_img)
-                
-                # Icon on top
                 lbl_ico = ttk.Label(inner_box, image=self.brand_icon_img, style="White.TLabel")
                 lbl_ico.pack(side="top", pady=(0, 5)) 
         except Exception as e:
             print(f"Brand icon load error: {e}")
 
-        # Brand Text on bottom
         lbl_brand = ttk.Label(
-            inner_box, 
-            text="RIA 莉丫", 
-            font=("Microsoft YaHei UI", 12, "bold"), 
-            foreground="#0056b3",
-            style="White.TLabel"
+            inner_box, text="RIA 莉丫", font=("Microsoft YaHei UI", 12, "bold"), 
+            foreground="#0056b3", style="White.TLabel"
         )
         lbl_brand.pack(side="top")
 
@@ -538,6 +467,7 @@ class RatioAnalyzerApp:
         self.btn_save_raw.pack(fill="x", pady=2)
         self.ui_elements["btn_save_raw"] = self.btn_save_raw
 
+        # 使用 ToggledFrame (from components)
         fr_set = ToggledFrame(grid_area, text="Settings", style="Card.TFrame")
         fr_set.grid(row=0, column=2, sticky="new", padx=(5, 0))
         self.ui_elements["lbl_settings"] = fr_set.lbl_title
@@ -558,10 +488,16 @@ class RatioAnalyzerApp:
         self.root.title(self.t("window_title").format(self.VERSION))
         self.lbl_title.config(text=self.t("header_title"))
         for key, widget in self.ui_elements.items():
-            try: widget.config(text=self.t(key))
+            try:
+                # 适配 Tab 标题的修改
+                if callable(widget): 
+                    widget(self.t(key))
+                else:
+                    widget.config(text=self.t(key))
             except: pass
         if self.c1_path is None: self.lbl_c1_path.config(text=self.t("lbl_no_file"))
         if self.c2_path is None: self.lbl_c2_path.config(text=self.t("lbl_no_file"))
+        if self.dual_path is None: self.lbl_dual_path.config(text=self.t("lbl_no_file"))
 
     def create_compact_file_row(self, parent, btn_key, cmd, lbl_attr):
         f = ttk.Frame(parent, style="White.TFrame"); f.pack(fill="x", pady=1)
@@ -615,12 +551,49 @@ class RatioAnalyzerApp:
             self.cached_bg2 = calculate_background(self.data2, p)
         except: pass
 
+    # --- File Selection Methods ---
+    def select_c1(self):
+        p = filedialog.askopenfilename()
+        if p: self.c1_path = p; self.lbl_c1_path.config(text=os.path.basename(p)); self.check_ready()
+    def select_c2(self):
+        p = filedialog.askopenfilename()
+        if p: self.c2_path = p; self.lbl_c2_path.config(text=os.path.basename(p)); self.check_ready()
+    def select_dual(self):
+        p = filedialog.askopenfilename(filetypes=[("TIFF Files", "*.tif *.tiff *.nd2"), ("All Files", "*.*")])
+        if p: 
+            self.dual_path = p
+            self.lbl_dual_path.config(text=os.path.basename(p))
+            self.check_ready()
+
+    def check_ready(self):
+        current_tab = self.nb_import.index("current")
+        if current_tab == 0:
+            if self.c1_path and self.c2_path: 
+                self.btn_load.config(state="normal")
+            else:
+                self.btn_load.config(state="disabled")
+        else:
+            if self.dual_path:
+                self.btn_load.config(state="normal")
+            else:
+                self.btn_load.config(state="disabled")
+
     def load_data(self):
         try:
-            self.root.config(cursor="watch"); self.root.update()
-            d1 = tiff.imread(self.c1_path).astype(np.float32)
-            d2 = tiff.imread(self.c2_path).astype(np.float32)
-            if d1.shape != d2.shape: raise ValueError("Mismatch!")
+            self.root.config(cursor="watch")
+            self.root.update()
+            
+            current_tab = self.nb_import.index("current")
+            d1 = None; d2 = None
+            
+            # --- 分支逻辑：分别加载 vs 单文件加载 ---
+            if current_tab == 0:
+                # 使用 io_utils 中的函数
+                d1, d2 = read_separate_files(self.c1_path, self.c2_path)
+            else:
+                # 使用 io_utils 中的函数
+                d1, d2 = read_and_split_dual_channel(self.dual_path, self.is_interleaved_var.get())
+
             self.data1, self.data2 = d1, d2
             self.recalc_background()
             
@@ -633,8 +606,11 @@ class RatioAnalyzerApp:
             
             self.cbar = self.fig.colorbar(self.im_object, ax=self.ax, shrink=0.6, pad=0.02, label='Ratio (C1/C2)')
             self.update_plot()
-        except Exception as e: messagebox.showerror("Error", str(e))
-        finally: self.root.config(cursor="")
+            
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+        finally:
+            self.root.config(cursor="")
 
     def get_processed_frame(self, frame_idx):
         if self.data1 is None: return None
@@ -661,7 +637,9 @@ class RatioAnalyzerApp:
                     
                     g_min, g_max = np.inf, -np.inf
                     
-                    for i in range(len(self.data1)):
+                    # 采样加速
+                    step = max(1, len(self.data1)//10)
+                    for i in range(0, len(self.data1), step):
                         f1 = np.clip(self.data1[i] - bg1, 0, None)
                         f2 = np.clip(self.data2[i] - bg2, 0, None)
                         
@@ -913,15 +891,6 @@ class RatioAnalyzerApp:
         path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Ratio_F{self.var_frame.get()}.tif")
         if path: tiff.imwrite(path, self.get_processed_frame(self.var_frame.get()))
 
-    def select_c1(self):
-        p = filedialog.askopenfilename()
-        if p: self.c1_path = p; self.lbl_c1_path.config(text=os.path.basename(p)); self.check_ready()
-    def select_c2(self):
-        p = filedialog.askopenfilename()
-        if p: self.c2_path = p; self.lbl_c2_path.config(text=os.path.basename(p)); self.check_ready()
-    def check_ready(self):
-        if self.c1_path and self.c2_path: self.btn_load.config(state="normal")
-    
     def on_frame_slide(self, v):
         self.var_frame.set(int(float(v))); self.lbl_frame.config(text=f"{self.var_frame.get()}/{self.data1.shape[0]-1}")
         if not self.is_playing: self.update_plot()

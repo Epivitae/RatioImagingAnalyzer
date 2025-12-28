@@ -13,7 +13,6 @@ class ToggledFrame(ttk.Frame):
         self.show = tk.IntVar()
         self.show.set(0)
         
-        # 标题栏背景透明或适配 Card 样式
         self.title_frame = ttk.Frame(self, style="Card.TFrame")
         self.title_frame.pack(fill="x", expand=1)
         
@@ -27,10 +26,9 @@ class ToggledFrame(ttk.Frame):
         )
         self.toggle_btn.pack(side="left")
         
-        self.lbl_title = ttk.Label(self.title_frame, text=text, font="TkCaptionFont", background="#FFFFFF")
+        self.lbl_title = ttk.Label(self.title_frame, text=text, style="Blue.TLabel")
         self.lbl_title.pack(side="left", padx=5)
         
-        # 内容区域
         self.sub_frame = ttk.Frame(self, relief="flat", borderwidth=0, padding=5, style="Card.TFrame")
 
     def toggle(self):
