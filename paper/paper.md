@@ -11,6 +11,7 @@ tags:
 authors:
   - name: Kui Wang
     orcid: 0000-0002-9436-3632
+    corresponding: true
     affiliation: 1
 affiliations:
  - name: Center for Excellence in Brain Science and Intelligence Technology (Institute of Neuroscience), Chinese Academy of Sciences, 320 Yue Yang Road, Shanghai, 200031 P.R.China
