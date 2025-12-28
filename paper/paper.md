@@ -5,8 +5,8 @@ tags:
   - biology
   - fluorescence imaging
   - ratiometric analysis
-  - calcium imaging
   - genetically encoded indicator
+  - tryptophan sensor
   - graphical user interface
 authors:
   - name: Kui Wang
@@ -16,11 +16,12 @@ affiliations:
  - name: Center for Excellence in Brain Science and Intelligence Technology (Institute of Neuroscience), Chinese Academy of Sciences, 320 Yue Yang Road, Shanghai, 200031 P.R.China
    index: 1
 date: 27 December 2025
-bibliography: /paper/paper.bib
+bibliography: paper.bib
 ---
+
 # Summary
 
-Ratiometric fluorescence imaging is a fundamental technique in cell biology and neuroscience, widely used to quantify dynamic intracellular events such as calcium fluctuations, pH variations, or metabolite changes using genetically encoded biosensors or synthetic dyes [@Grynkiewicz:1985]. By calculating the ratio of fluorescence intensities at two distinct channels, this method inherently corrects for artifacts caused by uneven illumination, varying indicator concentrations, and photobleaching.
+Ratiometric fluorescence imaging is a fundamental technique in cell biology and neuroscience, widely used to quantify dynamic intracellular events such as metabolite fluctuations (e.g., tryptophan), pH variations, or FRET-based biosensing [@Tao:2023]. By calculating the ratio of fluorescence intensities at two distinct channels, this method inherently corrects for artifacts caused by uneven illumination, varying indicator concentrations, and photobleaching.
 
 **Ratio Imaging Analyzer (RIA)** is an open-source, desktop-based graphical application designed to democratize the processing of ratiometric imaging data. It bridges the gap between raw microscope outputs and biological insights by providing an automated, "drag-and-drop" workflow. Researchers can perform dynamic background subtraction, apply intensity-based thresholding, and generate real-time time-course plots from interactive Regions of Interest (ROIs) without writing code.
 
@@ -30,9 +31,9 @@ Ratiometric fluorescence imaging is a fundamental technique in cell biology and 
 
 Quantitative analysis of time-lapse ratiometric data remains a bottleneck for many biologists. Current solutions generally fall into two categories, each with distinct limitations:
 
-1. **Commercial Software**: Packages like MetaFluor or NIS-Elements are robust but prohibitively expensive and often locked to specific acquisition workstations via hardware dongles, restricting convenient offline analysis.
-2. **General-purpose Open Source Tools**: While powerful, platforms like ImageJ/Fiji [@Schindelin:2012] require users to navigate complex, multi-step workflows (e.g., splitting channels, background subtraction, creating masks, and calculator operations) or rely on legacy plugins that may not handle modern stack formats efficiently.
-3. **Custom Scripts**: Analysis pipelines written in MATLAB or Python offer flexibility but lack user-friendly interfaces (GUI), making them inaccessible to researchers without programming expertise.
+1.  **Commercial Software**: Packages like MetaFluor or NIS-Elements are robust but prohibitively expensive and often locked to specific acquisition workstations via hardware dongles, restricting convenient offline analysis.
+2.  **General-purpose Open Source Tools**: While powerful, platforms like ImageJ/Fiji [@Schindelin:2012] require users to navigate complex, multi-step workflows (e.g., splitting channels, background subtraction, creating masks, and calculator operations) or rely on legacy plugins that may not handle modern stack formats efficiently.
+3.  **Custom Scripts**: Analysis pipelines written in MATLAB or Python offer flexibility but lack user-friendly interfaces (GUI), making them inaccessible to researchers without programming expertise.
 
 **RIA** addresses these challenges by packaging a streamlined, ratiometric-specific workflow into a standalone executable. It allows wet-lab biologists to leverage the performance of the Python scientific stack (`NumPy`, `SciPy`) through a familiar interface, removing the need for environment management or script editing.
 

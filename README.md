@@ -4,9 +4,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-**Ratio Imaging Analyzer (RIA)** is a lightweight, open-source Python tool designed for the visualization and quantification of ratiometric fluorescence imaging data (e.g., Calcium imaging with Fura-2, Indo-1, or genetically encoded sensors like GCaMP/R-GECO, cpYFP).
+**Ratio Imaging Analyzer (RIA)** is a lightweight, open-source Python tool designed for the visualization and quantification of ratiometric fluorescence imaging data (e.g., genetically encoded sensors for tryptophan, pH, or other metabolites).
 
-It provides a user-friendly Graphical User Interface (GUI) to perform background subtraction, thresholding, and real-time ROI (Region of Interest) analysis without requiring any programming knowledge. The method corrects for artifacts caused by uneven illumination and photobleaching by calculating the ratio of fluorescence intensities, based on the principles described by Grynkiewicz et al. (1985).
+It provides a user-friendly Graphical User Interface (GUI) to perform background subtraction, thresholding, and real-time ROI (Region of Interest) analysis without requiring any programming knowledge. The software is optimized for processing data from novel genetically encoded indicators, such as the tryptophan sensor described by Tao, Wang et al. (2023).
 
 ![RIA Interface](paper/images/figure1.png)
 
@@ -15,13 +15,13 @@ It provides a user-friendly Graphical User Interface (GUI) to perform background
 * **Dual-Channel Processing**: Seamlessly loads and aligns multi-page TIFF stacks for two channels using `tifffile`.
 * **NaN-safe Algorithms**: Implements custom spatial smoothing (normalized convolution) that handles `NaN` values correctly, preventing data erosion at cell edges.
 * **Interactive Analysis**:
-  * Real-time background subtraction and intensity thresholding.
-  * "Draw-and-Drag" ROI system with instant time-course plotting.
-  * Video player with adjustable playback speed.
+    * Real-time background subtraction and intensity thresholding.
+    * "Draw-and-Drag" ROI system with instant time-course plotting.
+    * Video player with adjustable playback speed.
 * **Data Integrity**:
-  * Exports processed image stacks (visual data).
-  * Exports **raw float32 ratio data** (scientific data) for downstream statistical analysis.
-  * Exports time-series traces to CSV/Excel compatible formats.
+    * Exports processed image stacks (visual data).
+    * Exports **raw float32 ratio data** (scientific data) for downstream statistical analysis.
+    * Exports time-series traces to CSV/Excel compatible formats.
 * **Standalone Capable**: Can be frozen into an executable (`.exe`) for portability on lab computers.
 
 ## 📁 Project Structure
@@ -43,24 +43,23 @@ RatioImagingAnalyzer/
 
 ### Option 1: Running from Source (Recommended for Developers/Reviewers)
 
-1. **Clone the repository:**
+1.  **Clone the repository:**
+    ```bash
+    git clone [https://github.com/Epivitae/RatioImagingAnalyzer.git](https://github.com/Epivitae/RatioImagingAnalyzer.git)
+    cd RatioImagingAnalyzer
+    ```
 
-   ```bash
-   git clone [https://github.com/Epivitae/RatioImagingAnalyzer.git](https://github.com/Epivitae/RatioImagingAnalyzer.git)
-   cd RatioImagingAnalyzer
-   ```
-2. **Install dependencies:**
-   It is recommended to use a virtual environment.
+2.  **Install dependencies:**
+    It is recommended to use a virtual environment.
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. **Run the application:**
-   The source code is located in the `src` directory:
-
-   ```bash
-   python src/main.py
-   ```
+3.  **Run the application:**
+    The source code is located in the `src` directory:
+    ```bash
+    python src/main.py
+    ```
 
 ### Option 2: Standalone Executable (For End Users)
 
@@ -70,28 +69,27 @@ Check the [Releases](https://github.com/Epivitae/RatioImagingAnalyzer/releases) 
 
 To test the software, you can use the sample data provided in the `data/` directory.
 
-1. **Launch RIA** (`python src/main.py`).
-2. **Load Files**:
-   * Click **📂 Ch1** and select `data/C1.tif`.
-   * Click **📂 Ch2** and select `data/C2.tif`.
-   * Click **🚀 Load & Analyze**.
-3. **Adjust Parameters**:
-   * Set **BG %** (Background Subtraction) to ~5-10%.
-   * Adjust **Int. Min** (Intensity Threshold) to remove background noise.
-   * *(Optional)* Enable **Log Scale** if the dynamic range is large.
-4. **Analyze**:
-   * Click **✏️ Draw ROI** in the "ROI & Measurement" panel.
-   * Draw a rectangle on the cell of interest.
-   * A curve window will pop up showing the ratio change over time.
+1.  **Launch RIA** (`python src/main.py`).
+2.  **Load Files**:
+    * Click **📂 Ch1** and select `data/C1.tif`.
+    * Click **📂 Ch2** and select `data/C2.tif`.
+    * Click **🚀 Load & Analyze**.
+3.  **Adjust Parameters**:
+    * Set **BG %** (Background Subtraction) to ~5-10%.
+    * Adjust **Int. Min** (Intensity Threshold) to remove background noise.
+    * *(Optional)* Enable **Log Scale** if the dynamic range is large.
+4.  **Analyze**:
+    * Click **✏️ Draw ROI** in the "ROI & Measurement" panel.
+    * Draw a rectangle on the cell of interest.
+    * A curve window will pop up showing the ratio change over time.
 
 ## 🧪 Testing
 
 This project uses `pytest` to ensure algorithm accuracy. The tests are located in the `tests/` directory.
 
 To run the automated tests:
-
 ```bash
-python -m pytest tests/
+pytest tests/
 ```
 
 ## 🤝 Contributing
@@ -106,7 +104,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 This software relies on the following open-source libraries and methods:
 
-* **Methodology**: Grynkiewicz, G., Poenie, M., & Tsien, R. Y. (1985). A new generation of Ca2+ indicators with greatly improved fluorescence properties. *Journal of Biological Chemistry*, 260(6), 3440–3450.
+* **Methodology**: Tao, R., Wang, K., et al. (2023). A genetically encoded ratiometric indicator for tryptophan. *Cell Discovery*, 9, 106. [DOI: 10.1038/s41421-023-00608-1](https://doi.org/10.1038/s41421-023-00608-1)
 * **NumPy**: Harris, C. R., et al. (2020). Array programming with NumPy. *Nature*, 585(7825), 357–362. [DOI: 10.1038/s41586-020-2649-2](https://doi.org/10.1038/s41586-020-2649-2)
 * **SciPy**: Virtanen, P., et al. (2020). SciPy 1.0: Fundamental Algorithms for Scientific Computing in Python. *Nature Methods*, 17, 261–272. [DOI: 10.1038/s41592-019-0686-2](https://doi.org/10.1038/s41592-019-0686-2)
 * **Matplotlib**: Hunter, J. D. (2007). Matplotlib: A 2D graphics environment. *Computing in Science & Engineering*, 9(3), 90–95. [DOI: 10.1109/MCSE.2007.55](https://doi.org/10.1109/MCSE.2007.55)
@@ -115,7 +113,7 @@ This software relies on the following open-source libraries and methods:
 
 ## 🖊️ Citation
 
-If you use this software in your research, please cite our software DOI or the associated JOSS paper (under review?):
+If you use this software in your research, please cite our software DOI or the associated JOSS paper (under review):
 
 ```bibtex
 @software{ria_software,
