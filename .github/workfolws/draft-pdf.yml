@@ -1,5 +1,4 @@
 name: Draft PDF
-# 触发条件：当你 push 代码到仓库时自动运行
 on: [push, pull_request]
 
 jobs:
@@ -14,16 +13,12 @@ jobs:
         uses: openjournals/openjournals-draft-action@master
         with:
           journal: joss
-          # ⚠️ 注意：这里要改成你 paper.md 的实际路径
-          # 如果你的文件在根目录，就是 'paper.md'
-          # 如果在 paper 文件夹下，就是 'paper/paper.md'
+          # ✅ 输入路径：指向子文件夹
           paper-path: paper/paper.md
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: paper
-          # ⚠️ 注意：这里是生成的 PDF 路径
-          # 它会默认生成在和 paper.md 同一个目录下
-          # 如果上面是 'paper/paper.md'，这里也要改成 'paper/paper.pdf'
-          path: paper.pdf
+          # ✅ 修正点：上传路径也要改成子文件夹
+          path: paper/paper.pdf
