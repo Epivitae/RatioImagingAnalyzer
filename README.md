@@ -46,9 +46,11 @@ RatioImagingAnalyzer/
 ### Option 1: Running from Source (Recommended for Developers/Reviewers)
 
 1. **Clone the repository:**
-
+   ```bash
    git clone https://github.com/Epivitae/RatioImagingAnalyzer.git
    cd RatioImagingAnalyzer
+   ```
+
 2. **Install dependencies:**
    It is recommended to use a virtual environment.
 
