@@ -15,13 +15,13 @@ It provides a user-friendly Graphical User Interface (GUI) to perform background
 * **Dual-Channel Processing**: Seamlessly loads and aligns multi-page TIFF stacks for two channels using `tifffile`.
 * **NaN-safe Algorithms**: Implements custom spatial smoothing (normalized convolution) that handles `NaN` values correctly, preventing data erosion at cell edges.
 * **Interactive Analysis**:
-    * Real-time background subtraction and intensity thresholding.
-    * "Draw-and-Drag" ROI system with instant time-course plotting.
-    * Video player with adjustable playback speed.
+  * Real-time background subtraction and intensity thresholding.
+  * "Draw-and-Drag" ROI system with instant time-course plotting.
+  * Video player with adjustable playback speed.
 * **Data Integrity**:
-    * Exports processed image stacks (visual data).
-    * Exports **raw float32 ratio data** (scientific data) for downstream statistical analysis.
-    * Exports time-series traces to CSV/Excel compatible formats.
+  * Exports processed image stacks (visual data).
+  * Exports **raw float32 ratio data** (scientific data) for downstream statistical analysis.
+  * Exports time-series traces to CSV/Excel compatible formats.
 * **Standalone Capable**: Can be frozen into an executable (`.exe`) for portability on lab computers.
 
 ## 📁 Project Structure
@@ -43,58 +43,60 @@ RatioImagingAnalyzer/
 
 ### Option 1: Running from Source (Recommended for Developers/Reviewers)
 
-1.  **Clone the repository:**
-    ```bash
-    git clone [https://github.com/YourUsername/RatioImagingAnalyzer.git](https://github.com/YourUsername/RatioImagingAnalyzer.git)
-    cd RatioImagingAnalyzer
-    ```
+1. **Clone the repository:**
 
-2.  **Install dependencies:**
-    It is recommended to use a virtual environment.
-    ```bash
-    pip install -r requirements.txt
-    ```
+   ```bash
+   git clone [https://github.com/Epivitae/RatioImagingAnalyzer.git](https://github.com/Epivitae/RatioImagingAnalyzer.git)
+   cd RatioImagingAnalyzer
+   ```
+2. **Install dependencies:**
+   It is recommended to use a virtual environment.
 
-3.  **Run the application:**
-    The source code is located in the `src` directory:
-    ```bash
-    python src/main.py
-    ```
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. **Run the application:**
+   The source code is located in the `src` directory:
+
+   ```bash
+   python src/main.py
+   ```
 
 ### Option 2: Standalone Executable (For End Users)
 
-Check the [Releases](https://github.com/YourUsername/RatioImagingAnalyzer/releases) page to download the latest compiled `.exe` file for Windows. No Python installation is required.
+Check the [Releases](https://github.com/Epivitae/RatioImagingAnalyzer/releases) page to download the latest compiled `.exe` file for Windows. No Python installation is required.
 
 ## 📖 Usage Example
 
 To test the software, you can use the sample data provided in the `data/` directory.
 
-1.  **Launch RIA** (`python src/main.py`).
-2.  **Load Files**:
-    * Click **📂 Ch1** and select `data/C1.tif`.
-    * Click **📂 Ch2** and select `data/C2.tif`.
-    * Click **🚀 Load & Analyze**.
-3.  **Adjust Parameters**:
-    * Set **BG %** (Background Subtraction) to ~5-10%.
-    * Adjust **Int. Min** (Intensity Threshold) to remove background noise.
-    * *(Optional)* Enable **Log Scale** if the dynamic range is large.
-4.  **Analyze**:
-    * Click **✏️ Draw ROI** in the "ROI & Measurement" panel.
-    * Draw a rectangle on the cell of interest.
-    * A curve window will pop up showing the ratio change over time.
+1. **Launch RIA** (`python src/main.py`).
+2. **Load Files**:
+   * Click **📂 Ch1** and select `data/C1.tif`.
+   * Click **📂 Ch2** and select `data/C2.tif`.
+   * Click **🚀 Load & Analyze**.
+3. **Adjust Parameters**:
+   * Set **BG %** (Background Subtraction) to ~5-10%.
+   * Adjust **Int. Min** (Intensity Threshold) to remove background noise.
+   * *(Optional)* Enable **Log Scale** if the dynamic range is large.
+4. **Analyze**:
+   * Click **✏️ Draw ROI** in the "ROI & Measurement" panel.
+   * Draw a rectangle on the cell of interest.
+   * A curve window will pop up showing the ratio change over time.
 
 ## 🧪 Testing
 
 This project uses `pytest` to ensure algorithm accuracy. The tests are located in the `tests/` directory.
 
 To run the automated tests:
+
 ```bash
 pytest tests/
 ```
 
 ## 🤝 Contributing
 
-Contributions are welcome! If you encounter any bugs or have feature requests, please check the [Issue Tracker](https://github.com/YourUsername/RatioImagingAnalyzer/issues) or submit a Pull Request.
+Contributions are welcome! If you encounter any bugs or have feature requests, please check the [Issue Tracker](https://github.com/Epivitae/RatioImagingAnalyzer/issues) or submit a Pull Request.
 
 ## 📄 License
 
@@ -113,13 +115,13 @@ This software relies on the following open-source libraries and methods:
 
 ## 🖊️ Citation
 
-If you use this software in your research, please cite our software DOI or the associated JOSS paper (under review):
+If you use this software in your research, please cite our software DOI or the associated JOSS paper (under review?):
 
 ```bibtex
 @software{ria_software,
   author = {Wang, Kui},
   title = {Ratio Imaging Analyzer (RIA)},
   year = {2025},
-  url = {[https://github.com/YourUsername/RatioImagingAnalyzer](https://github.com/YourUsername/RatioImagingAnalyzer)}
+  url = {[https://github.com/Epivitae/RatioImagingAnalyzer](https://github.com/Epivitae/RatioImagingAnalyzer)}
 }
 ```
