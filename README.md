@@ -47,10 +47,8 @@ RatioImagingAnalyzer/
 
 1. **Clone the repository:**
 
-   ```bash
-   git clone [https://github.com/Epivitae/RatioImagingAnalyzer.git](https://github.com/Epivitae/RatioImagingAnalyzer.git)
+   git clone https://github.com/Epivitae/RatioImagingAnalyzer.git)
    cd RatioImagingAnalyzer
-   ```
 2. **Install dependencies:**
    It is recommended to use a virtual environment.
 
@@ -93,7 +91,7 @@ This project uses `pytest` to ensure algorithm accuracy. The tests are located i
 To run the automated tests:
 
 ```bash
-pytest tests/
+python -m pytest tests/
 ```
 
 ## 🤝 Contributing
