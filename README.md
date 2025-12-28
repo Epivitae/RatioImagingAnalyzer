@@ -91,7 +91,7 @@ This project uses `pytest` to ensure algorithm accuracy. The tests are located i
 To run the automated tests:
 
 ```bash
-pytest tests/
+python -m pytest tests/
 ```
 
 ## 🤝 Contributing
