@@ -14,6 +14,7 @@ import datetime
 import threading
 import requests
 import webbrowser
+from PIL import Image, ImageTk
 
 # --- Attempt to import processing logic ---
 try:
@@ -61,12 +62,9 @@ LANG_MAP = {
     "btn_clear": {"cn": "❌ 清除", "en": "❌ Clear"},
     "btn_plot": {"cn": "📈 生成曲线", "en": "📈 Plot Curve"},
     "btn_save_stack": {"cn": "💾 保存序列 (Stack)", "en": "💾 Save Stack"},
-    # [修改] 图标改为光盘，文案保持 Raw
     "btn_save_raw": {"cn": "💽 保存原始比值 (Raw)", "en": "💽 Save Raw Ratio"}, 
-    # [修改] 图标改为相机，视觉更紧凑
     "btn_save_frame": {"cn": "📷 保存当前帧", "en": "📷 Save Frame"}, 
     "chk_live": {"cn": "🔴 实时监测 (Live)", "en": "🔴 Live Monitor"},
-    # [修改] 文案更新
     "lbl_interval": {"cn": "Imaging Interval (s):", "en": "Imaging Interval (s):"}, 
     "lbl_unit": {"cn": "Plotting Unit:", "en": "Plotting Unit:"},
     "lbl_speed": {"cn": "倍速:", "en": "Speed:"},
@@ -83,21 +81,32 @@ LANG_MAP = {
 # --- 2. Define ToggledFrame Class ---
 class ToggledFrame(ttk.Frame):
     def __init__(self, parent, text="", *args, **options):
+        # Default to Card style unless specified
+        if "style" not in options:
+            options["style"] = "Card.TFrame"
+            
         ttk.Frame.__init__(self, parent, *args, **options)
         
         self.show = tk.IntVar()
         self.show.set(0)
         
-        self.title_frame = ttk.Frame(self)
+        self.title_frame = ttk.Frame(self, style="Card.TFrame")
         self.title_frame.pack(fill="x", expand=1)
         
-        self.toggle_btn = ttk.Checkbutton(self.title_frame, width=2, text='▶', command=self.toggle, variable=self.show, style='Toolbutton')
+        self.toggle_btn = ttk.Checkbutton(
+            self.title_frame, 
+            width=2, 
+            text='▶', 
+            command=self.toggle, 
+            variable=self.show, 
+            style='Toolbutton'
+        )
         self.toggle_btn.pack(side="left")
         
         self.lbl_title = ttk.Label(self.title_frame, text=text, style="Blue.TLabel")
         self.lbl_title.pack(side="left", padx=5)
         
-        self.sub_frame = ttk.Frame(self, relief="sunken", borderwidth=1, padding=5)
+        self.sub_frame = ttk.Frame(self, relief="flat", borderwidth=0, padding=5, style="Card.TFrame")
 
     def toggle(self):
         if self.show.get():
@@ -112,39 +121,41 @@ class RatioAnalyzerApp:
     def __init__(self, root):
         self.root = root
         
-        # --- 1. 核心字体对象初始化 ---
+        # --- 1. Initialize core font objects ---
         self.base_font_size = 10
         self.current_font_size = self.base_font_size
         
-        # 定义动态字体对象
+        # Define dynamic font objects
         self.f_normal = tkfont.Font(family="Segoe UI", size=self.base_font_size)
         self.f_bold = tkfont.Font(family="Segoe UI", size=self.base_font_size, weight="bold")
         self.f_title = tkfont.Font(family="Helvetica", size=self.base_font_size + 8, weight="bold")
         
-        # 接管系统字体
+        # Take over system fonts
         self.default_tk_font = tkfont.nametofont("TkDefaultFont")
         self.text_tk_font = tkfont.nametofont("TkTextFont")
         self.caption_tk_font = tkfont.nametofont("TkCaptionFont")
 
         self._resize_timer = None
 
-        # --- 样式初始化 ---
+        # --- Style initialization ---
         self.setup_theme()
         
         self.VERSION = __version__
-        self.current_lang = "en" # 默认英文
+        self.current_lang = "en" # Default to English
         self.ui_elements = {}
         self.root.geometry("1280x850")
         self.root.configure(bg="#F0F2F5") 
         
         self.root.minsize(1000, 600)
         
+        # --- Icon Loading (Window & Taskbar) ---
         try:
             icon_path = self.get_asset_path("ratiofish.ico")
             if os.path.exists(icon_path):
-                self.root.iconbitmap(icon_path)
-        except Exception:
-            pass
+                # Using iconbitmap is best for Windows as it supports multi-size icons (16/32/48/256)
+                self.root.iconbitmap(default=icon_path) 
+        except Exception as e:
+            print(f"Warning: Failed to load icon: {e}")
 
         self.data1 = None; self.data2 = None
         self.cached_bg1 = 0; self.cached_bg2 = 0
@@ -162,7 +173,7 @@ class RatioAnalyzerApp:
         self.change_font_size(0)
 
     def setup_theme(self):
-        """配置现代扁平化主题，并绑定动态字体"""
+        """Configure modern flat theme and bind dynamic fonts."""
         style = ttk.Style()
         try:
             style.theme_use('clam')
@@ -174,7 +185,7 @@ class RatioAnalyzerApp:
         TEXT_COLOR = "#333333"
         BLUE_COLOR = "#0056b3"
         
-        # --- 全局字体绑定 ---
+        # --- Global font binding ---
         style.configure(".", background=BG_COLOR, foreground=TEXT_COLOR, font=self.f_normal)
         style.configure("TLabel", background=BG_COLOR, font=self.f_normal)
         style.configure("TButton", padding=4, font=self.f_normal)
@@ -183,7 +194,7 @@ class RatioAnalyzerApp:
         style.configure("TEntry", font=self.f_normal)
         style.configure("TCombobox", font=self.f_normal)
         
-        # --- 自定义样式 ---
+        # --- Custom Styles ---
         style.configure("Card.TFrame", background=CARD_COLOR, relief="flat")
         style.configure("Card.TLabelframe", background=CARD_COLOR, relief="solid", borderwidth=1)
         style.configure("Card.TLabelframe.Label", background=CARD_COLOR, foreground=BLUE_COLOR, font=self.f_bold)
@@ -194,7 +205,7 @@ class RatioAnalyzerApp:
         style.configure("White.TFrame", background=CARD_COLOR)
         style.configure("Blue.TLabel", foreground=BLUE_COLOR, font=self.f_bold)
 
-        # --- 现代化的 Toggle Button 样式 ---
+        # --- Modern Toggle Button Style ---
         style.configure("Toggle.TButton", font=self.f_normal, background="#FFFFFF", borderwidth=1)
         style.map("Toggle.TButton",
             background=[("selected", "#E8F0FE"), ("active", "#F5F5F5")], 
@@ -202,17 +213,16 @@ class RatioAnalyzerApp:
             relief=[("selected", "sunken"), ("!selected", "raised")]
         )
 
-        # --- GitHub Star 样式 (金黄色) ---
+        # --- GitHub Star Style (Gold) ---
         style.configure("Starred.TButton", font=self.f_normal, foreground="#F5C518")
         
-        # --- 紧凑型按钮样式 (用于"应用") ---
+        # --- Compact Button Style ---
         style.configure("Compact.TButton", font=self.f_normal, padding=(2, 0))
 
-        # --- [新增] 常灰色按钮样式 (用于"保存原始比值") ---
-        # 默认背景设为淡灰色，前景色设为深灰，表示"次要/不常用"
+        # --- Gray Button Style (for less common actions) ---
         style.configure("Gray.TButton", font=self.f_normal, background="#E0E0E0", foreground="#555555")
         style.map("Gray.TButton",
-            background=[("active", "#D5D5D5"), ("pressed", "#C0C0C0")], # 鼠标悬停/按下稍微变深
+            background=[("active", "#D5D5D5"), ("pressed", "#C0C0C0")], 
             foreground=[("active", "#333333")]
         )
         
@@ -248,7 +258,7 @@ class RatioAnalyzerApp:
         self.style.configure("Toggle.TButton", font=self.f_normal)
         self.style.configure("Starred.TButton", font=self.f_normal)
         self.style.configure("Compact.TButton", font=self.f_normal)
-        self.style.configure("Gray.TButton", font=self.f_normal) # 确保 Gray 样式也能响应字体变化
+        self.style.configure("Gray.TButton", font=self.f_normal) 
         self.style.configure("Card.TLabelframe.Label", font=self.f_bold) 
         self.style.configure("Blue.TLabel", font=self.f_bold)
         
@@ -283,20 +293,20 @@ class RatioAnalyzerApp:
         self.lbl_title.pack(side="left")
         self.ui_elements["header_title"] = self.lbl_title
 
-        # --- 顶部按钮区域布局 (视觉顺序 L->R: 语言 | GitHub | 字体) ---
+        # --- Top Button Area Layout ---
         btn_frame = ttk.Frame(header, style="Header.TFrame")
         btn_frame.pack(side="right")
         
-        # 1. 最右侧：字体控制组
+        # 1. Right: Font controls
         ttk.Button(btn_frame, text="A+", width=3, command=lambda: self.change_font_size(1)).pack(side="right", padx=2)
         ttk.Button(btn_frame, text="⟳", width=3, command=self.reset_font_size).pack(side="right", padx=2)
         ttk.Button(btn_frame, text="A-", width=3, command=lambda: self.change_font_size(-1)).pack(side="right", padx=2)
         
-        # 2. 中间：GitHub 链接
+        # 2. Middle: GitHub Link
         self.btn_github = ttk.Button(btn_frame, text="☆ GitHub", command=self.star_github)
         self.btn_github.pack(side="right", padx=10)
         
-        # 3. 最左侧：语言切换 [固定显示]
+        # 3. Left: Language Switch [Fixed]
         ttk.Button(btn_frame, text="🌐 EN/中文", command=self.toggle_language).pack(side="right", padx=2)
 
         footer = tk.Frame(self.root, bg="#F0F2F5", height=25)
@@ -353,7 +363,7 @@ class RatioAnalyzerApp:
         
         self.lbl_bg_col = ttk.Label(f_grid, style="White.TLabel"); self.lbl_bg_col.grid(row=1, column=0, sticky="w", pady=5)
         self.ui_elements["lbl_bg_col"] = self.lbl_bg_col
-        # [修改] 简化 Transparent -> Trans
+        
         self.bg_color_var = tk.StringVar(value="Trans")
         ttk.OptionMenu(f_grid, self.bg_color_var, "Trans", "Trans", "Black", "White", command=lambda _: self.update_cmap()).grid(row=1, column=1, sticky="ew", pady=5)
 
@@ -374,6 +384,41 @@ class RatioAnalyzerApp:
         self.btn_apply = ttk.Button(f_rng, command=self.update_plot, width=6, style="Compact.TButton")
         self.btn_apply.pack(side="right", padx=2, fill="y")
         self.ui_elements["btn_apply"] = self.btn_apply
+
+        # --- Bottom Brand Logo (Using PIL for high-quality scaling) ---
+        self.fr_brand = ttk.Frame(self.frame_left, style="White.TFrame")
+        self.fr_brand.pack(side="bottom", fill="x", pady=(30, 10))
+
+        inner_box = ttk.Frame(self.fr_brand, style="White.TFrame")
+        inner_box.pack(anchor="center")
+
+        try:
+            icon_path = self.get_asset_path("ratiofish.ico")
+            if os.path.exists(icon_path):
+                # Use PIL to read and resize
+                pil_img = Image.open(icon_path)
+                
+                # Resize icon to 64x64 for better visibility
+                icon_size = 64
+                pil_img = pil_img.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
+                
+                self.brand_icon_img = ImageTk.PhotoImage(pil_img)
+                
+                # Icon on top
+                lbl_ico = ttk.Label(inner_box, image=self.brand_icon_img, style="White.TLabel")
+                lbl_ico.pack(side="top", pady=(0, 5)) 
+        except Exception as e:
+            print(f"Brand icon load error: {e}")
+
+        # Brand Text on bottom
+        lbl_brand = ttk.Label(
+            inner_box, 
+            text="RIA 莉丫", 
+            font=("Microsoft YaHei UI", 12, "bold"), 
+            foreground="#0056b3",
+            style="White.TLabel"
+        )
+        lbl_brand.pack(side="top")
 
         # === Right Panel ===
         self.frame_right = ttk.Frame(self.main_pane, style="Card.TFrame", padding=10)
@@ -449,28 +494,25 @@ class RatioAnalyzerApp:
         self.chk_live.grid(row=1, column=1, padx=2, pady=2, sticky="ew") 
         self.ui_elements["chk_live"] = self.chk_live
 
-        # [修改] Interval 和 Unit 分开横向居中布局
         f_time = ttk.Frame(fr_roi, style="White.TFrame")
         f_time.grid(row=2, column=0, columnspan=2, sticky="ew", padx=2, pady=5)
         
-        # 左右两个容器，各占一半权重，实现平分居中效果
         f_time.columnconfigure(0, weight=1)
         f_time.columnconfigure(1, weight=1)
         
-        # 左侧：Interval
+        # Left: Interval
         f_left = ttk.Frame(f_time, style="White.TFrame")
         f_left.grid(row=0, column=0)
-        self.lbl_int = ttk.Label(f_left, text="Imaging Interval (s):", style="White.TLabel") # 更新文案
+        self.lbl_int = ttk.Label(f_left, text="Imaging Interval (s):", style="White.TLabel") 
         self.lbl_int.pack(side="left")
         self.ui_elements["lbl_interval"] = self.lbl_int
         self.var_interval = tk.DoubleVar(value=1.0)
-        # [修改] justify='center' 让数字居中
         ttk.Entry(f_left, textvariable=self.var_interval, width=5, justify='center').pack(side="left", padx=2)
         
-        # 右侧：Unit
+        # Right: Unit
         f_right = ttk.Frame(f_time, style="White.TFrame")
         f_right.grid(row=0, column=1)
-        self.lbl_unit = ttk.Label(f_right, text="Plotting Unit:", style="White.TLabel") # 更新文案
+        self.lbl_unit = ttk.Label(f_right, text="Plotting Unit:", style="White.TLabel")
         self.lbl_unit.pack(side="left")
         self.ui_elements["lbl_unit"] = self.lbl_unit
         self.combo_unit = ttk.Combobox(f_right, values=["s", "m", "h"], width=3, state="readonly")
@@ -491,7 +533,7 @@ class RatioAnalyzerApp:
         self.btn_save_stack.pack(fill="x", pady=2)
         self.ui_elements["btn_save_stack"] = self.btn_save_stack
         
-        # [修改] 新增保存原始比值按钮，并使用常灰色 Gray.TButton 样式
+        # Save Raw Ratio Button
         self.btn_save_raw = ttk.Button(fr_exp, command=self.save_raw_thread, style="Gray.TButton")
         self.btn_save_raw.pack(fill="x", pady=2)
         self.ui_elements["btn_save_raw"] = self.btn_save_raw
@@ -837,12 +879,10 @@ class RatioAnalyzerApp:
         finally: 
             self.ui_elements["btn_save_stack"].config(state="normal", text=self.t("btn_save_stack"))
 
-    # [新增] 保存原始比值数据的线程
     def save_raw_thread(self):
         if self.data1 is None: return
         threading.Thread(target=self.save_raw_task).start()
 
-    # [新增] 保存原始比值数据的任务逻辑
     def save_raw_task(self):
         try:
             self.ui_elements["btn_save_raw"].config(state="disabled", text="⏳ Saving...")
@@ -854,12 +894,12 @@ class RatioAnalyzerApp:
                 for i in range(self.data1.shape[0]):
                     if i%10==0: self.ui_elements["btn_save_raw"].config(text=f"⏳ {i}/{self.data1.shape[0]}")
                     
-                    # 纯计算比值，无任何处理
+                    # Compute raw ratio without processing
                     d1 = self.data1[i].astype(np.float32)
                     d2 = self.data2[i].astype(np.float32)
                     with np.errstate(divide='ignore', invalid='ignore'):
                         ratio = np.divide(d1, d2)
-                        ratio[d2 == 0] = np.nan # 保持NaN表示无效
+                        ratio[d2 == 0] = np.nan
                         
                     tif.write(ratio, contiguous=True)
                     

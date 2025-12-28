@@ -1,30 +1,37 @@
 import sys
 import os
 import tkinter as tk
+import ctypes
 
-# 将当前目录添加到系统路径，确保能找到同级模块
+# Add current directory to system path to ensure sibling modules are found
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
 
-# 尝试导入模块
+# Attempt to import core modules
 try:
-    # 优先尝试同级导入
+    # Try sibling import first
     from gui import RatioAnalyzerApp
     from _version import __version__
 except ImportError:
-    # 如果失败，尝试作为包导入（通常在打包环境下不应该走到这里，但为了保险）
+    # Fallback for package context
     try:
         from src.gui import RatioAnalyzerApp
         from src._version import __version__
     except ImportError as e:
-        # 如果还不行，打印详细错误并抛出
         print(f"Error importing core modules: {e}")
         raise
 
 def main():
-    # 在控制台打印版本号，方便确认当前运行的版本
     print(f"Starting Ratio Imaging Analyzer {__version__}...")
     
+    # Tell Windows this is a distinct application (fixes Taskbar icon issue)
+    try:
+        # Unique AppID format: Company.Product.SubProduct.Version
+        myappid = f'epivitae.ratioimaginganalyzer.ria.{__version__}.v3'
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except Exception as e:
+        print(f"Warning: Could not set AppUserModelID: {e}")
+
     root = tk.Tk()
     app = RatioAnalyzerApp(root)
     root.mainloop()
