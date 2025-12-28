@@ -115,15 +115,4 @@ This software relies on the following open-source libraries and methods:
 * **Tifffile**: Gohlke, C. (2023). tifffile. PyPI. [URL](https://pypi.org/project/tifffile/)
 * **Fiji (Inspiration)**: Schindelin, J., et al. (2012). Fiji: an open-source platform for biological-image analysis. *Nature Methods*, 9(7), 676–682.
 
-## 🖊️ Citation
 
-# If you use this software in your research, please cite our software DOI or the associated JOSS paper (under review):
-
-# ```bibtex
-# @software{ria_software,
-#   author = {Wang, Kui},
-#   title = {Ratio Imaging Analyzer (RIA)},
-#   year = {2025},
-#   url = {[https://github.com/Epivitae/RatioImagingAnalyzer](https://github.com/Epivitae/RatioImagingAnalyzer)}
-# }
-# ```
