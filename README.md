@@ -6,14 +6,14 @@
 
 **Ratio Imaging Analyzer (RIA)** is a lightweight, open-source Python tool designed for the visualization and quantification of ratiometric fluorescence imaging data (e.g., Calcium imaging with Fura-2, Indo-1, or genetically encoded sensors like GCaMP/R-GECO, cpYFP).
 
-It provides a user-friendly Graphical User Interface (GUI) to perform background subtraction, thresholding, and real-time ROI (Region of Interest) analysis without requiring any programming knowledge.
+It provides a user-friendly Graphical User Interface (GUI) to perform background subtraction, thresholding, and real-time ROI (Region of Interest) analysis without requiring any programming knowledge. The method corrects for artifacts caused by uneven illumination and photobleaching by calculating the ratio of fluorescence intensities, based on the principles described by Grynkiewicz et al. (1985).
 
 ![RIA Interface](paper/images/figure1.png)
 
 ## ✨ Key Features
 
-* **Dual-Channel Processing**: Seamlessly loads and aligns multi-page TIFF stacks for two channels.
-* **NaN-safe Algorithms**: Implements custom spatial smoothing that handles `NaN` values correctly, preventing data erosion at cell edges.
+* **Dual-Channel Processing**: Seamlessly loads and aligns multi-page TIFF stacks for two channels using `tifffile`.
+* **NaN-safe Algorithms**: Implements custom spatial smoothing (normalized convolution) that handles `NaN` values correctly, preventing data erosion at cell edges.
 * **Interactive Analysis**:
     * Real-time background subtraction and intensity thresholding.
     * "Draw-and-Drag" ROI system with instant time-course plotting.
@@ -33,7 +33,8 @@ RatioImagingAnalyzer/
 ├── src/                # Source code
 │   ├── main.py         # Entry point
 │   ├── gui.py          # User Interface logic
-│   └── processing.py   # Core algorithms
+│   ├── processing.py   # Core algorithms
+│   └── components.py   # UI widgets
 ├── tests/              # Unit tests
 └── requirements.txt    # Python dependencies
 ```
@@ -55,7 +56,7 @@ RatioImagingAnalyzer/
     ```
 
 3.  **Run the application:**
-    Since the source code is located in the `src` directory, run:
+    The source code is located in the `src` directory:
     ```bash
     python src/main.py
     ```
@@ -91,8 +92,6 @@ To run the automated tests:
 pytest tests/
 ```
 
-*Note: The tests cover background calculation logic, ratio computation stability, and verification of the NaN-safe smoothing algorithm.*
-
 ## 🤝 Contributing
 
 Contributions are welcome! If you encounter any bugs or have feature requests, please check the [Issue Tracker](https://github.com/YourUsername/RatioImagingAnalyzer/issues) or submit a Pull Request.
@@ -100,6 +99,17 @@ Contributions are welcome! If you encounter any bugs or have feature requests, p
 ## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for more information.
+
+## 📚 References & Dependencies
+
+This software relies on the following open-source libraries and methods:
+
+* **Methodology**: Grynkiewicz, G., Poenie, M., & Tsien, R. Y. (1985). A new generation of Ca2+ indicators with greatly improved fluorescence properties. *Journal of Biological Chemistry*, 260(6), 3440–3450.
+* **NumPy**: Harris, C. R., et al. (2020). Array programming with NumPy. *Nature*, 585(7825), 357–362. [DOI: 10.1038/s41586-020-2649-2](https://doi.org/10.1038/s41586-020-2649-2)
+* **SciPy**: Virtanen, P., et al. (2020). SciPy 1.0: Fundamental Algorithms for Scientific Computing in Python. *Nature Methods*, 17, 261–272. [DOI: 10.1038/s41592-019-0686-2](https://doi.org/10.1038/s41592-019-0686-2)
+* **Matplotlib**: Hunter, J. D. (2007). Matplotlib: A 2D graphics environment. *Computing in Science & Engineering*, 9(3), 90–95. [DOI: 10.1109/MCSE.2007.55](https://doi.org/10.1109/MCSE.2007.55)
+* **Tifffile**: Gohlke, C. (2023). tifffile. PyPI. [URL](https://pypi.org/project/tifffile/)
+* **Fiji (Inspiration)**: Schindelin, J., et al. (2012). Fiji: an open-source platform for biological-image analysis. *Nature Methods*, 9(7), 676–682.
 
 ## 🖊️ Citation
 
