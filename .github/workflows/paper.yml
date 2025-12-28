@@ -21,4 +21,4 @@ jobs:
         with:
           name: paper
           # ✅ 修正点：上传路径也要改成子文件夹
-          path: paper/paper.pdf
+          path: paper/paper_draft.pdf
