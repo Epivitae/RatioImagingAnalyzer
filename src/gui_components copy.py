@@ -158,7 +158,7 @@ class RoiManager:
     def _update_temp_roi_data(self, extents):
         xmin, xmax, ymin, ymax = extents
         
-        # Ignore meaningless selections (clicks without drag)
+        # [FIX] Ignore meaningless selections (clicks without drag)
         if abs(xmax - xmin) < 1.0 or abs(ymax - ymin) < 1.0:
             return False
         
@@ -200,31 +200,27 @@ class RoiManager:
         self.last_drag_time = now
         
         try:
-            # Live Plotting uses default Thresholds (0) to avoid lag, 
-            # or pass current sliders if fast enough. Here we keep it simple.
             if self._update_temp_roi_data(self.selector.extents):
                 self.plot_curve(
                     interval=self.app.var_interval.get(),
                     unit=self.app.combo_unit.get(),
                     is_log=self.app.log_var.get(),
-                    do_norm=self.app.norm_var.get(),
-                    int_thresh=self.app.var_int_thresh.get(), # Use current
-                    ratio_thresh=self.app.var_ratio_thresh.get()
+                    do_norm=self.app.norm_var.get()
                 )
         except Exception:
             pass
 
     def _on_select_finalize(self, eclick, erelease):
         try:
+            # Always update data on release
             if self._update_temp_roi_data(self.selector.extents):
+                # If Live is ON, plot immediately
                 if self.app.live_plot_var.get():
                     self.plot_curve(
                         interval=self.app.var_interval.get(),
                         unit=self.app.combo_unit.get(),
                         is_log=self.app.log_var.get(),
-                        do_norm=self.app.norm_var.get(),
-                        int_thresh=self.app.var_int_thresh.get(),
-                        ratio_thresh=self.app.var_ratio_thresh.get()
+                        do_norm=self.app.norm_var.get()
                     )
         except Exception:
             pass
@@ -274,9 +270,7 @@ class RoiManager:
                 interval=self.app.var_interval.get(),
                 unit=self.app.combo_unit.get(),
                 is_log=self.app.log_var.get(),
-                do_norm=self.app.norm_var.get(),
-                int_thresh=self.app.var_int_thresh.get(),
-                ratio_thresh=self.app.var_ratio_thresh.get()
+                do_norm=self.app.norm_var.get()
             )
 
     def _generate_mask(self, shape_type, params):
@@ -314,9 +308,7 @@ class RoiManager:
                 interval=self.app.var_interval.get(),
                 unit=self.app.combo_unit.get(),
                 is_log=self.app.log_var.get(),
-                do_norm=self.app.norm_var.get(),
-                int_thresh=self.app.var_int_thresh.get(),
-                ratio_thresh=self.app.var_ratio_thresh.get()
+                do_norm=self.app.norm_var.get()
             )
 
     def clear_all(self):
@@ -337,8 +329,7 @@ class RoiManager:
             self.plot_ax.clear()
             self.plot_canvas.draw()
 
-    # [修改] 增加 int_thresh 和 ratio_thresh 参数
-    def plot_curve(self, interval=1.0, unit='s', is_log=False, do_norm=False, int_thresh=0, ratio_thresh=0):
+    def plot_curve(self, interval=1.0, unit='s', is_log=False, do_norm=False):
         if not self.roi_list and not self.temp_roi: 
             if self.plot_ax: 
                 self.plot_ax.clear()
@@ -364,38 +355,18 @@ class RoiManager:
 
         threading.Thread(
             target=self._calc_multi_roi_thread, 
-            args=(data1, data2, bg1, bg2, interval, unit, is_log, do_norm, task_list, int_thresh, ratio_thresh)
+            args=(data1, data2, bg1, bg2, interval, unit, is_log, do_norm, task_list)
         ).start()
 
-    # [修改] 使用阈值进行严格过滤
-    def _calc_multi_roi_thread(self, data1, data2, bg1, bg2, interval, unit, is_log, do_norm, task_list, int_thresh, ratio_thresh):
+    def _calc_multi_roi_thread(self, data1, data2, bg1, bg2, interval, unit, is_log, do_norm, task_list):
         try:
             results = []
-            d1_clean = data1 - bg1
-            d2_clean = data2 - bg2
+            d1_clean = np.clip(data1 - bg1, 0, None)
+            d2_clean = np.clip(data2 - bg2, 0, None)
             
-            # Clip 负值 (NaN 保持不变)
-            d1_clean = np.clip(d1_clean, 0, None)
-            d2_clean = np.clip(d2_clean, 0, None)
-            
-            # [关键修复] 构建严格的有效性掩膜 (与 Save Stack 逻辑一致)
-            # 过滤掉强度低于 int_thresh 的像素
-            # 过滤掉分母接近 0 的像素 (插值噪声/黑边)
-            mask_valid = (d1_clean > int_thresh) & (d2_clean > int_thresh) & (d2_clean > 0.001)
-
             with np.errstate(divide='ignore', invalid='ignore'):
-                # 初始化为 NaN
-                ratio_stack = np.full_like(d1_clean, np.nan)
-                
-                # 只在有效区域计算除法
-                np.divide(d1_clean, d2_clean, out=ratio_stack, where=mask_valid)
-                
-                # (可选) 如果需要分子为0时结果为0，可以取消下面注释，但通常保持NaN更安全
-                # ratio_stack[(d1_clean == 0) & mask_valid] = 0
-
-            # 应用比率阈值
-            if ratio_thresh > 0:
-                ratio_stack[ratio_stack < ratio_thresh] = np.nan
+                ratio_stack = np.divide(d1_clean, d2_clean)
+                ratio_stack[d2_clean == 0] = np.nan
             
             for item in task_list:
                 mask = item['mask']
@@ -403,29 +374,18 @@ class RoiManager:
                 if len(y_idxs) == 0:
                     means = np.zeros(ratio_stack.shape[0])
                 else:
-                    # [关键] nanmean 会忽略所有无效/过滤掉的像素 (NaN)
                     roi_pixels = ratio_stack[:, y_idxs, x_idxs]
                     means = np.nanmean(roi_pixels, axis=1)
                 
-                # 如果整帧 ROI 全是 NaN，结果是 NaN，转为 0 方便画图
-                means = np.nan_to_num(means, nan=0.0)
-                
                 if do_norm:
-                    valid_mask = means > 1e-6
-                    if np.any(valid_mask):
-                        valid_vals = means[valid_mask]
-                        thresh_5 = np.percentile(valid_vals, 5)
-                        baseline_vals = valid_vals[valid_vals <= thresh_5]
-                        if len(baseline_vals) > 0:
-                            r0 = np.mean(baseline_vals)
-                        else:
-                            r0 = np.mean(valid_vals)
-                        if r0 > 1e-6:
+                    valid_means = means[~np.isnan(means)]
+                    if len(valid_means) > 0:
+                        thresh_5 = np.percentile(valid_means, 5)
+                        r0 = np.mean(valid_means[valid_means <= thresh_5])
+                        if r0 != 0:
                             means = (means - r0) / r0
                         else:
                             means = np.zeros_like(means)
-                    else:
-                        means = np.zeros_like(means)
                 
                 results.append({
                     'id': item['id'],
@@ -511,5 +471,5 @@ class RoiManager:
                 btn_widget.configure(text=original_text, state="normal")
             except: pass
             
-        btn_widget.configure(text="笨Copied!", state="disabled")
+        btn_widget.configure(text="✔ Copied!", state="disabled")
         self.app.root.after(1000, restore)

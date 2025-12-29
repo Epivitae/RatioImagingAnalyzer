@@ -1,6 +1,6 @@
 # src/processing.py
 import numpy as np
-# 新增: 导入 OpenCV
+
 try:
     import cv2
 except ImportError:
@@ -13,12 +13,9 @@ def calculate_background(stack_data, percentile):
 
 def smooth_nan_safe(arr, size):
     """
-    使用 SciPy 优化的 NaN 安全平滑算法。
+    SciPy NaN-safe smoothing.
     """
-    if size <= 1:
-        return arr
-    
-    # [优化] 延迟导入 Scipy，极大加快软件启动速度
+    if size <= 1: return arr
     from scipy.ndimage import uniform_filter
     
     arr = arr.astype(np.float32)
@@ -35,30 +32,34 @@ def smooth_nan_safe(arr, size):
     result[sum_mask < 1e-6] = np.nan
     return result
 
-# src/processing.py
-import numpy as np
-# 新增: 导入 OpenCV
-try:
-    import cv2
-except ImportError:
-    cv2 = None
-
-# ... (保留原有的 calculate_background, smooth_nan_safe 函数不变) ...
-
 def process_frame_ratio(d1_frame, d2_frame, bg1, bg2, int_thresh, ratio_thresh, smooth_size, log_scale=False):
-    # ... (保留原有内容不变) ...
-    img1 = np.clip(d1_frame - bg1, 0, None)
-    img2 = np.clip(d2_frame - bg2, 0, None)
+    # 1. 减背景 (保留 NaN，因为 NaN - bg = NaN)
+    img1 = d1_frame - bg1
+    img2 = d2_frame - bg2
 
-    mask_int = (img1 < int_thresh) | (img2 < int_thresh)
+    # 2. Clip 负值为 0 (NaN 会保持为 NaN)
+    # 注意：这里我们不 clip 上限，只处理负底噪
+    img1 = np.clip(img1, 0, None)
+    img2 = np.clip(img2, 0, None)
 
+    # 3. 计算 Ratio
+    # 关键逻辑：如果 img2 太小 (接近0或为NaN)，结果设为 NaN
+    # 使用 out=np.nan 初始化，只在 where 条件满足时计算
     with np.errstate(divide='ignore', invalid='ignore'):
-        ratio = np.divide(img1, img2)
-        ratio[img2 == 0] = np.nan 
-        ratio[img1 == 0] = 0
+        # 设定一个极小的 epsilon 防止除零 (0.001 对应 uint16 来说远小于 1)
+        ratio = np.divide(img1, img2, out=np.full_like(img1, np.nan), where=img2 > 0.001)
+        
+        # 兼容旧逻辑：分子为0时，结果为0 (背景平滑)
+        # 但只有在分母有效时才设为0
+        ratio[(img1 == 0) & (img2 > 0.001)] = 0
     
-    ratio[mask_int] = np.nan
+    # 4. 应用强度阈值 (Int. Min)
+    if int_thresh > 0:
+        # 如果原始信号低于阈值，也标记为 NaN
+        mask_low = (img1 < int_thresh) | (img2 < int_thresh)
+        ratio[mask_low] = np.nan
 
+    # 5. 应用比率阈值
     if ratio_thresh > 0:
         ratio[ratio < ratio_thresh] = np.nan
         
@@ -70,69 +71,69 @@ def process_frame_ratio(d1_frame, d2_frame, bg1, bg2, int_thresh, ratio_thresh, 
         
     return ratio
 
-# --- 新增: ECC 配准算法 ---
-def align_stack_ecc(stack_ref, stack_move, progress_callback=None):
+def align_stack_ecc(data1, data2, progress_callback=None):
     """
-    使用 OpenCV ECC 算法校正图像漂移 (Translation 模式)。
-    基于 stack_ref (Ch1) 计算位移，应用到 ref 和 move (Ch2)。
+    自动选择较亮通道作为基准进行 ECC 配准。
     """
     if cv2 is None:
-        raise ImportError("OpenCV not installed. Run 'pip install opencv-python'")
+        raise ImportError("OpenCV not installed.")
 
-    frames, h, w = stack_ref.shape
+    frames, h, w = data1.shape
     
-    # 结果容器
-    aligned_ref = np.zeros_like(stack_ref)
-    aligned_move = np.zeros_like(stack_move)
+    # --- 1. 自动检测较亮通道 ---
+    # 计算全栈平均值（简单有效）
+    mean1 = np.mean(data1)
+    mean2 = np.mean(data2)
     
-    # 第一帧作为 Template (基准)
+    # 确定谁是基准 (ref), 谁是跟随 (move)
+    if mean1 >= mean2:
+        is_c1_ref = True
+        stack_ref = data1
+        stack_move = data2
+    else:
+        is_c1_ref = False
+        stack_ref = data2
+        stack_move = data1
+
+    # 初始化输出 (float32 以支持 NaN)
+    aligned_ref = np.zeros((frames, h, w), dtype=np.float32)
+    aligned_move = np.zeros((frames, h, w), dtype=np.float32)
+    
     template = stack_ref[0].astype(np.float32)
     aligned_ref[0] = template
-    aligned_move[0] = stack_move[0]
+    aligned_move[0] = stack_move[0].astype(np.float32)
 
-    # ECC 配置: 终止条件 (迭代50次 或 误差<1e-5)
     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 50, 1e-5)
-    motion_mode = cv2.MOTION_TRANSLATION # 仅校正平移，生物数据通常更安全
+    motion_mode = cv2.MOTION_TRANSLATION
 
-    # 循环处理
     for i in range(1, frames):
         current_img = stack_ref[i].astype(np.float32)
-        
-        # 初始化单位矩阵
         warp_matrix = np.eye(2, 3, dtype=np.float32)
 
         try:
-            # 1. 计算变换矩阵 (Template -> Current)
-            # Find the transform that maps Template to Current
             (_, warp_matrix) = cv2.findTransformECC(
-                template, 
-                current_img, 
-                warp_matrix, 
-                motion_mode, 
-                criteria,
-                None, # input mask
-                5     # gauss filter size (平滑以增加稳定性)
+                template, current_img, warp_matrix, motion_mode, criteria, None, 5
             )
             
-            # 2. 应用变换 (使用 WARP_INVERSE_MAP 因为我们需要将 Current 扭曲回 Template)
-            # 对 Ch1 (Ref)
+            # 应用变换，填充 NaN
             aligned_ref[i] = cv2.warpAffine(
-                stack_ref[i], warp_matrix, (w, h), 
-                flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP
+                stack_ref[i].astype(np.float32), warp_matrix, (w, h), 
+                flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP,
+                borderMode=cv2.BORDER_CONSTANT, borderValue=np.nan 
             )
-            # 对 Ch2 (Move) - 使用完全相同的矩阵！
             aligned_move[i] = cv2.warpAffine(
-                stack_move[i], warp_matrix, (w, h), 
-                flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP
+                stack_move[i].astype(np.float32), warp_matrix, (w, h), 
+                flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP,
+                borderMode=cv2.BORDER_CONSTANT, borderValue=np.nan
             )
-            
         except cv2.error:
-            # 如果配准失败 (如差异过大), 回退到原始帧
-            aligned_ref[i] = stack_ref[i]
-            aligned_move[i] = stack_move[i]
+            aligned_ref[i] = stack_ref[i].astype(np.float32)
+            aligned_move[i] = stack_move[i].astype(np.float32)
 
-        # UI 回调
-        if progress_callback:
-            progress_callback(i, frames)
+        if progress_callback: progress_callback(i, frames)
 
-    return aligned_ref, aligned_move
+    # --- 2. 按原始顺序返回 ---
+    if is_c1_ref:
+        return aligned_ref, aligned_move
+    else:
+        return aligned_move, aligned_ref

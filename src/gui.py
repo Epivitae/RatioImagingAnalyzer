@@ -15,14 +15,12 @@ from PIL import Image, ImageTk
 
 # --- Import Components ---
 try:
-    # 尝试相对导入
     from .constants import LANG_MAP
     from .components import ToggledFrame
     from .io_utils import read_and_split_dual_channel, read_separate_files
     from .gui_components import PlotManager, RoiManager 
 except ImportError:
     try:
-        # 尝试绝对导入
         from constants import LANG_MAP
         from components import ToggledFrame
         from io_utils import read_and_split_dual_channel, read_separate_files
@@ -30,9 +28,8 @@ except ImportError:
     except ImportError as e:
         print(f"Import Error: {e}. Ensure all modules exist.")
 
-# --- Import Processing (Updated) ---
+# --- Import Processing ---
 try:
-    # [关键修改] 这里增加了 align_stack_ecc 的导入
     from .processing import calculate_background, process_frame_ratio, align_stack_ecc
 except ImportError:
     try:
@@ -71,7 +68,7 @@ class RatioAnalyzerApp:
         self.VERSION = __version__
         self.current_lang = "en"
         self.ui_elements = {}
-        self.root.geometry("1080x880")
+        self.root.geometry("800x1240")
         self.root.configure(bg="#F0F2F5") 
         self.root.minsize(1000, 600)
         
@@ -88,8 +85,6 @@ class RatioAnalyzerApp:
 
         # Data & Flags
         self.data1 = None; self.data2 = None
-        
-        # [新增] 用于存储原始数据的备份 (用于 Undo)
         self.data1_raw = None; self.data2_raw = None 
 
         self.cached_bg1 = 0; self.cached_bg2 = 0
@@ -101,12 +96,10 @@ class RatioAnalyzerApp:
         self.is_playing = False; self.fps = 10 
         self.is_interleaved_var = tk.BooleanVar(value=False)
 
-        # 1. 先构建轻量级 UI (按钮、布局)，让窗口秒开
         self.setup_ui_skeleton()
         self.update_language()
         self.change_font_size(0)
         
-        # 2. 延迟 100ms 加载重型图形引擎 (Matplotlib)
         self.root.after(100, self.load_graphics_engine)
 
     def setup_theme(self):
@@ -137,12 +130,14 @@ class RatioAnalyzerApp:
         style.configure("White.TFrame", background=CARD_COLOR)
         style.configure("Blue.TLabel", foreground=BLUE_COLOR, font=self.f_bold)
         
-        # Modern Button Styles
         style.configure("Toggle.TButton", font=self.f_normal, background="#FFFFFF", borderwidth=1, padding=5)
         style.map("Toggle.TButton", background=[("selected", "#E8F0FE"), ("active", "#F5F5F5")], foreground=[("selected", BLUE_COLOR)], relief=[("selected", "sunken"), ("!selected", "raised")])
         style.configure("Starred.TButton", font=self.f_normal, foreground="#F5C518")
         style.configure("Compact.TButton", font=self.f_normal, padding=5, width=3) 
         style.configure("Gray.TButton", font=self.f_normal, background="#E0E0E0", foreground="#555555")
+        
+        style.configure("Success.TButton", font=self.f_bold, foreground="#28a745") 
+
         style.configure("Toolbutton", background=CARD_COLOR, relief="flat", borderwidth=0, padding=4)
         style.map("Toolbutton", background=[("selected", "#E8F0FE")], relief=[("selected", "sunken")])
         
@@ -184,7 +179,6 @@ class RatioAnalyzerApp:
         self.btn_github.config(text="★ GitHub", style="Starred.TButton")
 
     def setup_ui_skeleton(self):
-        # Header
         header = ttk.Frame(self.root, padding="15 10", style="Header.TFrame")
         header.pack(fill="x")
         self.lbl_title = ttk.Label(header, text="RIA", font=self.f_title, background="#FFFFFF", foreground="#2c3e50")
@@ -201,32 +195,27 @@ class RatioAnalyzerApp:
         self.main_pane = ttk.PanedWindow(self.root, orient="horizontal")
         self.main_pane.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # === Left Panel ===
         self.frame_left_container = ttk.Frame(self.main_pane, style="Card.TFrame", padding=10)
         self.main_pane.add(self.frame_left_container, weight=0)
         
         self.frame_left = ttk.Frame(self.frame_left_container, width=320, style="White.TFrame")
         self.frame_left.pack(fill="both", expand=True)
 
-        self.setup_file_group()
-        # [新增] 插入新的配准模块
-        self.setup_preprocess_group()
-        self.setup_calc_group()
-        self.setup_view_group()
+        self.setup_file_group()      # 1. File Loading
+        self.setup_preprocess_group()# 2. Image Registration (Optional)
+        self.setup_calc_group()      # 3. Calibration
+        self.setup_view_group()      # 4. Display Settings
         self.setup_brand_logo()
 
-        # === Right Panel ===
         self.frame_right = ttk.Frame(self.main_pane, style="Card.TFrame", padding=10)
         self.main_pane.add(self.frame_right, weight=1)
 
-        # Plot Container Placeholder
         self.plot_container = ttk.Frame(self.frame_right, style="White.TFrame")
         self.plot_container.pack(side="top", fill="both", expand=True)
         
         self.lbl_loading = ttk.Label(self.plot_container, text="Initializing Graphics Engine...", font=("Segoe UI", 12), foreground="gray", style="White.TLabel")
         self.lbl_loading.place(relx=0.5, rely=0.5, anchor="center")
 
-        # Bottom Panel
         self.create_bottom_panel(self.frame_right)
 
     def load_graphics_engine(self):
@@ -266,30 +255,24 @@ class RatioAnalyzerApp:
         self.btn_load.pack(fill="x", pady=(10, 0))
         self.ui_elements["btn_load"] = self.btn_load
 
-    # --- [新增] 1.5 Pre-processing Group ---
     def setup_preprocess_group(self):
         self.grp_pre = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
         self.grp_pre.pack(fill="x", pady=(0, 10))
         self.ui_elements["grp_pre"] = self.grp_pre
         
-        # Info Label
-        self.lbl_align_info = ttk.Label(self.grp_pre, foreground="gray", font=("Segoe UI", 9), style="White.TLabel")
-        self.lbl_align_info.pack(fill="x", pady=(0, 5))
-        self.ui_elements["lbl_align_info"] = self.lbl_align_info
-        
-        # Buttons Row
         row = ttk.Frame(self.grp_pre, style="White.TFrame")
         row.pack(fill="x")
         
-        self.btn_align = ttk.Button(row, command=self.run_alignment_thread, state="disabled")
-        self.btn_align.pack(side="left", fill="x", expand=True, padx=(0, 2))
+        # [核心修复] 为左侧按钮指定宽度 (width=20)，并取消 expand，确保右侧按钮空间
+        self.btn_align = ttk.Button(row, command=self.run_alignment_thread, state="disabled", width=20)
+        self.btn_align.pack(side="left", fill="x", padx=(0, 2))
         self.ui_elements["btn_align"] = self.btn_align
         
-        self.btn_undo_align = ttk.Button(row, command=self.undo_alignment, state="disabled", width=4, style="Gray.TButton")
-        self.btn_undo_align.pack(side="right", fill="x")
+        # 即使文字较长，现在右侧按钮也有足够的剩余空间显示了
+        self.btn_undo_align = ttk.Button(row, command=self.undo_alignment, state="disabled", width=8, style="Gray.TButton")
+        self.btn_undo_align.pack(side="right", fill="x", expand=True)
         self.ui_elements["btn_undo_align"] = self.btn_undo_align
         
-        # Progress Bar (默认隐藏)
         self.pb_align = ttk.Progressbar(self.grp_pre, orient="horizontal", mode="determinate")
 
     def setup_calc_group(self):
@@ -355,7 +338,6 @@ class RatioAnalyzerApp:
         bottom_area = ttk.Frame(parent, padding=(0, 10, 0, 0), style="White.TFrame")
         bottom_area.pack(fill="x", side="bottom")
 
-        # --- Player ---
         p_frame = ttk.LabelFrame(bottom_area, text="Player", style="Card.TLabelframe")
         p_frame.pack(fill="x", pady=(0,10))
         row_bar = ttk.Frame(p_frame, style="White.TFrame")
@@ -378,14 +360,12 @@ class RatioAnalyzerApp:
         self.tb_frame_placeholder = ttk.Frame(row_ctl, style="White.TFrame")
         self.tb_frame_placeholder.pack(side="right")
 
-        # --- Grid Layout Area ---
         grid_area = ttk.Frame(bottom_area, style="White.TFrame")
         grid_area.pack(fill="x", expand=True)
         grid_area.columnconfigure(0, weight=2)
         grid_area.columnconfigure(1, weight=1)
         grid_area.columnconfigure(2, weight=1)
 
-        # --- ROI Tools ---
         fr_roi = ttk.LabelFrame(grid_area, padding=5, style="Card.TLabelframe")
         fr_roi.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
         self.ui_elements["lbl_roi_tools"] = fr_roi
@@ -443,7 +423,6 @@ class RatioAnalyzerApp:
         self.chk_norm = ttk.Checkbutton(row_param, text="Normalization (ΔR/R₀)", variable=self.norm_var, style="Toggle.TButton", command=self.plot_roi_curve)
         self.chk_norm.grid(row=0, column=2, sticky="e")
 
-        # --- Export ---
         fr_exp = ttk.LabelFrame(grid_area, padding=5, style="Card.TLabelframe")
         fr_exp.grid(row=0, column=1, sticky="nsew", padx=5)
         self.ui_elements["lbl_export"] = fr_exp
@@ -457,7 +436,6 @@ class RatioAnalyzerApp:
         self.btn_save_raw.pack(fill="x", pady=2)
         self.ui_elements["btn_save_raw"] = self.btn_save_raw
 
-        # --- Settings ---
         fr_set = ToggledFrame(grid_area, text="Settings", style="Card.TFrame")
         fr_set.grid(row=0, column=2, sticky="new", padx=(5, 0))
         self.ui_elements["lbl_settings"] = fr_set.lbl_title
@@ -534,7 +512,6 @@ class RatioAnalyzerApp:
             self.cached_bg2 = calculate_background(self.data2, p)
         except: pass
 
-    # --- File Selection ---
     def select_c1(self):
         p = filedialog.askopenfilename()
         if p: self.c1_path = p; self.lbl_c1_path.config(text=os.path.basename(p)); self.check_ready()
@@ -569,61 +546,42 @@ class RatioAnalyzerApp:
                 d1, d2 = read_and_split_dual_channel(self.dual_path, self.is_interleaved_var.get())
 
             self.data1, self.data2 = d1, d2
-
-            # [新增] 重置配准备份数据和按钮状态
             self.data1_raw = None
             self.data2_raw = None
-            self.btn_undo_align.config(state="disabled")
-            self.btn_align.config(state="normal")
+            self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
+            self.btn_align.config(state="normal", text=self.t("btn_align"), style="TButton")
 
             self.recalc_background()
-            
             self.frame_scale.configure(to=self.data1.shape[0]-1)
             self.var_frame.set(0); self.frame_scale.set(0)
-            
             h, w = d1.shape[1], d1.shape[2]
             self.plot_mgr.init_image((h, w), cmap="coolwarm")
             self.roi_mgr.connect(self.plot_mgr.ax)
             self.update_plot()
-            
         except Exception as e:
             messagebox.showerror("Error", str(e))
         finally:
             self.root.config(cursor="")
 
-    # --- [新增] ECC Alignment Logic ---
     def run_alignment_thread(self):
         if self.data1 is None: return
-        # 锁定 UI
         self.btn_align.config(state="disabled")
         self.btn_load.config(state="disabled")
         self.pb_align.pack(fill="x", pady=(5, 0))
         self.pb_align["value"] = 0
-        
         threading.Thread(target=self.alignment_task, daemon=True).start()
 
     def alignment_task(self):
         try:
-            # 1. 备份数据 (如果是第一次运行)
             if self.data1_raw is None:
                 self.data1_raw = self.data1.copy()
                 self.data2_raw = self.data2.copy()
-            
-            # 2. 回调函数更新进度条
             def progress_cb(curr, total):
-                # 使用 after 在主线程更新 UI
                 self.root.after(0, lambda: self.pb_align.configure(value=(curr/total)*100))
-
-            # 3. 运行核心算法
             d1_aligned, d2_aligned = align_stack_ecc(self.data1, self.data2, progress_callback=progress_cb)
-            
-            # 4. 更新主数据
             self.data1 = d1_aligned
             self.data2 = d2_aligned
-            
-            # 5. 完成后的 UI 更新
             self.root.after(0, self.alignment_done_ui)
-            
         except ImportError:
             self.root.after(0, lambda: messagebox.showerror("Error", "OpenCV not found.\nPlease run: pip install opencv-python"))
             self.root.after(0, self.alignment_reset_ui)
@@ -636,9 +594,8 @@ class RatioAnalyzerApp:
         self.update_plot()
         self.pb_align.pack_forget()
         self.btn_load.config(state="normal")
-        self.btn_align.config(state="normal")
-        self.btn_undo_align.config(state="normal") # 启用撤销
-        messagebox.showinfo("RIA", self.t("msg_align_success"))
+        self.btn_align.config(state="normal", text=self.t("btn_align_done"), style="Success.TButton")
+        self.btn_undo_align.config(state="normal", text=self.t("btn_undo_align"), style="Gray.TButton")
 
     def alignment_reset_ui(self):
         self.pb_align.pack_forget()
@@ -651,14 +608,14 @@ class RatioAnalyzerApp:
             self.data2 = self.data2_raw.copy()
             self.recalc_background()
             self.update_plot()
-            
-            # 状态重置
             self.data1_raw = None
             self.data2_raw = None
-            self.btn_undo_align.config(state="disabled")
-            messagebox.showinfo("Undo", "Restored to raw data.")
-
-    # ----------------------------------
+            self.btn_undo_align.config(text=self.t("btn_undo_done"), style="Success.TButton")
+            self.btn_align.config(text=self.t("btn_align"), style="TButton")
+            def restore_undo_btn():
+                try: self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
+                except: pass
+            self.root.after(1000, restore_undo_btn)
 
     def get_processed_frame(self, frame_idx):
         if self.data1 is None: return None
@@ -673,8 +630,6 @@ class RatioAnalyzerApp:
         if self.lock_var.get():
             self.entry_vmin.config(state="normal")
             self.entry_vmax.config(state="normal")
-            if self.data1 is not None:
-                pass
         else:
             self.entry_vmin.config(state="disabled")
             self.entry_vmax.config(state="disabled")
@@ -682,11 +637,9 @@ class RatioAnalyzerApp:
 
     def update_plot(self):
         if self.data1 is None: return
-        
         idx = self.var_frame.get()
         img = self.get_processed_frame(idx)
         if img is None: return
-
         if self.lock_var.get():
             try: vmin, vmax = float(self.entry_vmin.get()), float(self.entry_vmax.get())
             except: vmin, vmax = 0.1, 1.0 
@@ -700,36 +653,31 @@ class RatioAnalyzerApp:
                     else: vmin, vmax = 0.1, 1.0
                 else: vmin, vmax = np.nanpercentile(img, [5, 95])
             except: vmin, vmax = 0, 1
-            
             self.entry_vmin.config(state="normal"); self.entry_vmax.config(state="normal")
             self.entry_vmin.delete(0, tk.END); self.entry_vmin.insert(0, f"{vmin:.2f}")
             self.entry_vmax.delete(0, tk.END); self.entry_vmax.insert(0, f"{vmax:.2f}")
             self.entry_vmin.config(state="disabled"); self.entry_vmax.config(state="disabled")
-
         title = f"Frame {idx} | {mode} | {'Log' if self.log_var.get() else 'Linear'}"
-        self.plot_mgr.update_image(
-            img, vmin, vmax, 
-            log_scale=self.log_var.get(), 
-            title=title
-        )
+        self.plot_mgr.update_image(img, vmin, vmax, log_scale=self.log_var.get(), title=title)
 
     def update_cmap(self):
         self.plot_mgr.update_cmap(self.cmap_var.get(), self.bg_color_var.get())
 
-    # --- ROI Actions ---
     def plot_roi_curve(self):
         try: interval = float(self.var_interval.get())
         except: interval = 1.0
         unit = self.combo_unit.get()
-        
+        i_th = self.var_int_thresh.get()
+        r_th = self.var_ratio_thresh.get()
         self.roi_mgr.plot_curve(
             interval=interval, 
             unit=unit, 
             is_log=self.log_var.get(),
-            do_norm=self.norm_var.get() 
+            do_norm=self.norm_var.get(),
+            int_thresh=i_th,
+            ratio_thresh=r_th
         )
 
-    # --- Export & Player ---
     def save_stack_thread(self):
         if self.data1 is None: return
         threading.Thread(target=self.save_stack_task).start()
@@ -740,7 +688,6 @@ class RatioAnalyzerApp:
             ts = datetime.datetime.now().strftime("%H%M%S")
             path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Ratio_Stack_{ts}.tif")
             if not path: return
-            
             with tiff.TiffWriter(path, bigtiff=True) as tif:
                 for i in range(self.data1.shape[0]):
                     if i%10==0: self.ui_elements["btn_save_stack"].config(text=f"⏳ {i}/{self.data1.shape[0]}")
@@ -758,19 +705,19 @@ class RatioAnalyzerApp:
         try:
             self.ui_elements["btn_save_raw"].config(state="disabled", text="⏳ Saving...")
             ts = datetime.datetime.now().strftime("%H%M%S")
-            path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Raw_Ratio_Stack_{ts}.tif")
+            path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Clean_Ratio_Stack_{ts}.tif")
             if not path: return
-            
             with tiff.TiffWriter(path, bigtiff=True) as tif:
                 for i in range(self.data1.shape[0]):
                     if i%10==0: self.ui_elements["btn_save_raw"].config(text=f"⏳ {i}/{self.data1.shape[0]}")
-                    d1 = self.data1[i].astype(np.float32)
-                    d2 = self.data2[i].astype(np.float32)
-                    with np.errstate(divide='ignore', invalid='ignore'):
-                        ratio = np.divide(d1, d2)
-                        ratio[d2 == 0] = np.nan
-                    tif.write(ratio, contiguous=True)
-            messagebox.showinfo("OK", f"Saved Raw Ratio: {path}")
+                    ratio_frame = process_frame_ratio(
+                        self.data1[i], self.data2[i],
+                        self.cached_bg1, self.cached_bg2,
+                        self.var_int_thresh.get(), self.var_ratio_thresh.get(),
+                        smooth_size=0, log_scale=False
+                    )
+                    tif.write(ratio_frame.astype(np.float32), contiguous=True)
+            messagebox.showinfo("OK", f"Saved Clean Ratio Stack: {path}")
         except Exception as e: messagebox.showerror("Err", str(e))
         finally: 
             self.ui_elements["btn_save_raw"].config(state="normal", text=self.t("btn_save_raw"))
