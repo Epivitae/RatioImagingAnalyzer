@@ -408,9 +408,9 @@ class RatioAnalyzerApp:
         self.btn_draw = ttk.Button(row_edit, text="New ROI", command=self.roi_mgr.start_drawing, style="Toggle.TButton")
         self.btn_draw.pack(side="left", padx=(15, 2), fill="y", expand=True)
         self.ui_elements["btn_draw"] = self.btn_draw
-        self.btn_undo = ttk.Button(row_edit, text="↩", command=self.roi_mgr.remove_last, width=3, style="Compact.TButton")
+        self.btn_undo = ttk.Button(row_edit, text="↩️", command=self.roi_mgr.remove_last, width=3, style="Compact.TButton")
         self.btn_undo.pack(side="left", padx=1, fill="y")
-        self.btn_clear = ttk.Button(row_edit, text="❌", command=self.roi_mgr.clear_all, width=3, style="Compact.TButton")
+        self.btn_clear = ttk.Button(row_edit, text="🗑️", command=self.roi_mgr.clear_all, width=3, style="Compact.TButton")
         self.btn_clear.pack(side="left", padx=1, fill="y")
         row_act = ttk.Frame(fr_roi, style="White.TFrame")
         row_act.pack(fill="x", pady=4)
