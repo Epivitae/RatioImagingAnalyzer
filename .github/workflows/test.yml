@@ -1,0 +1,36 @@
+name: Run Tests
+
+# 触发机制：当 push 到 main/master 分支，或者有人提交 Pull Request 时触发
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. 下载你的代码
+    - uses: actions/checkout@v3
+
+    # 2. 设置 Python 环境 (使用和你本地成功的 3.10 版本一致)
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+
+    # 3. 安装依赖
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # 安装核心科学计算库和测试框架
+        pip install pytest numpy tifffile matplotlib requests
+        # 【关键】在服务器环境使用 headless 版本，避免图形界面报错
+        pip install opencv-python-headless
+
+    # 4. 运行测试
+    - name: Run tests
+      run: |
+        pytest
