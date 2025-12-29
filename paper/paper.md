@@ -1,5 +1,5 @@
 ---
-title: 'Ratio Imaging Analyzer (RIA/莉丫): A Lightweight, Standalone Python Tool for Portable Ratiometric Fluorescence Analysis'
+title: 'Ratio Imaging Analyzer (RIA): A Lightweight, Standalone Python Tool for Portable Ratiometric Fluorescence Analysis'
 tags:
   - Python
   - biology
