@@ -1,1 +1,1 @@
-pyinstaller --noconfirm --onefile --windowed --icon "G:\3_Code\git\RatioImagingAnalyzer\assets\app_256x256.ico" --name "RIA_v1.7.6" --clean --debug "all" --optimize "1" --add-data "G:\3_Code\git\RatioImagingAnalyzer\assets;assets"  "G:\3_Code\git\RatioImagingAnalyzer\src\main.py"
+pyinstaller --noconfirm --onefile --windowed --icon "G:\3_Code\git\RatioImagingAnalyzer\assets\app_256x256.ico" --name "RIA_v1.7.7" --clean --debug "all" --optimize "1" --add-data "G:\3_Code\git\RatioImagingAnalyzer\assets;assets"  "G:\3_Code\git\RatioImagingAnalyzer\src\main.py"

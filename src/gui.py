@@ -11,7 +11,7 @@ import datetime
 import threading
 import requests
 import webbrowser
-from PIL import Image, ImageTk
+#from PIL import Image, ImageTk
 
 # --- Import Components ---
 try:
@@ -68,7 +68,7 @@ class RatioAnalyzerApp:
         self.VERSION = __version__
         self.current_lang = "en"
         self.ui_elements = {}
-        self.root.geometry("1080x980")
+        self.root.geometry("1080x990")
         self.root.configure(bg="#F0F2F5") 
         self.root.minsize(1000, 900)
         
@@ -323,16 +323,27 @@ class RatioAnalyzerApp:
         self.fr_brand.pack(side="bottom", fill="x", pady=(30, 10))
         inner_box = ttk.Frame(self.fr_brand, style="White.TFrame")
         inner_box.pack(anchor="center")
+        
         try:
-            icon_path = self.get_asset_path("ratiofish.ico")
+            # 直接加载 PNG 文件，不再使用 Pillow
+            icon_path = self.get_asset_path("app_ico.png") 
             if os.path.exists(icon_path):
-                pil_img = Image.open(icon_path)
-                pil_img = pil_img.resize((64, 64), Image.Resampling.LANCZOS)
-                self.brand_icon_img = ImageTk.PhotoImage(pil_img)
+                # 使用 Tkinter 原生 PhotoImage
+                self.brand_icon_img = tk.PhotoImage(file=icon_path)
+                
+                # 如果 PNG 尺寸太大，可以使用 subsample 进行简单等比缩小
+                # 例如原始是 256x256，设置 (4, 4) 会变成 64x64
+                if self.brand_icon_img.width() > 100:
+                    scale_factor = self.brand_icon_img.width() // 80
+                    self.brand_icon_img = self.brand_icon_img.subsample(scale_factor, scale_factor)
+                
                 ttk.Label(inner_box, image=self.brand_icon_img, style="White.TLabel").pack(side="top", pady=(0, 5)) 
         except Exception as e:
             print(f"Brand icon load error: {e}")
+            
         ttk.Label(inner_box, text="RIA 莉丫", font=("Microsoft YaHei UI", 12, "bold"), foreground="#0056b3", style="White.TLabel").pack(side="top")
+        current_year = datetime.datetime.now().year
+        ttk.Label(inner_box, text=f"© {current_year} Dr. Kui Wang | www.cns.ac.cn", font=("Segoe UI", 8), foreground="gray", style="White.TLabel").pack(side="top", pady=(2, 0))
 
     def create_bottom_panel(self, parent):
         bottom_area = ttk.Frame(parent, padding=(0, 10, 0, 0), style="White.TFrame")
