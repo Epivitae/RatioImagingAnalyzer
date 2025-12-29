@@ -11,7 +11,6 @@ import datetime
 import threading
 import requests
 import webbrowser
-#from PIL import Image, ImageTk
 
 # --- Import Components ---
 try:
