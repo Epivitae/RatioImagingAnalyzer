@@ -5,45 +5,39 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Run Tests](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml/badge.svg)](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml)
 
+**Meet RIA (or as we affectionately call her, "Li Ya / 莉丫").**
 
-**Ratio Imaging Analyzer (RIA, nickname "Li Ya/莉丫")** is a lightweight, open-source Python tool designed to make quantitative ratiometric analysis **accessible and portable**.
+RIA is an open-source tool built to solve a simple but annoying problem: **Ratiometric analysis shouldn't be stuck on the microscope computer.**
 
-Ratiometric imaging is a powerful technique for visualizing dynamic biological processes (e.g., using sensors for Tryptophan, Calcium, or pH) independent of expression levels. However, data analysis often requires expensive commercial software locked to microscope workstations. **RIA empowers researchers to perform rigorous analysis on their own laptops—anywhere, anytime.**
+Ratiometric imaging (like FRET or sensors for Tryptophan/pH/Ca²⁺) is amazing for normalizing data, but analyzing it usually requires expensive commercial software (like MetaMorph or NIS-Elements) that is locked to a specific workstation with a dongle.
 
-It provides a user-friendly Graphical User Interface (GUI) to perform background subtraction, thresholding, and real-time ROI (Region of Interest) analysis without requiring any programming knowledge.
+We built RIA so you can take your TIFF stacks, go to a coffee shop (or just your desk), and run rigorous analysis on your own laptop—no coding required.
 
 <p align="center">
-  <img src="assets/figure/analysis.gif" width="70%" alt="RIA Interface">
+  <img src="assets/figure/analysis.gif" width="70%" alt="RIA Interface showing trace analysis">
 </p>
+[Image of fluorescence ratiometric imaging process diagram]
 
-## ✨ Key Features
+## 💡 Why use RIA?
 
-* **Universal & Portable**: Works on standard PCs as a standalone executable. Decouples data analysis from image acquisition.
-* **Dual-Channel Processing**: Seamlessly loads and aligns multi-page TIFF stacks for two channels using `tifffile`.
-* **NaN-safe Algorithms**: Implements custom spatial smoothing (normalized convolution) that handles `NaN` values correctly, preventing data erosion at cell edges.
-* **Interactive Analysis**:
-  * Real-time background subtraction and intensity thresholding.
-  * "Draw-and-Drag" ROI system with instant time-course plotting.
-  * Video player with adjustable playback speed.
-* **Data Integrity**:
-  * Exports processed image stacks (visual data).
-  * Exports **raw float32 ratio data** (scientific data) for downstream statistical analysis.
-  * Exports time-series traces to CSV/Excel compatible formats.
+* **Analysis Unchained**: Stop queuing for the lab workstation. RIA is a standalone executable that runs on standard PCs.
+* **Math Done Right**: Calculating ratios isn't just `A / B`. Biological images have edges and noise. We implemented a **normalized convolution algorithm** that handles `NaN` (Not a Number) values correctly. This means your data doesn't get eroded or corrupted at cell boundaries—a common issue in simple script-based analysis.
+* **Zero Coding Needed**: We know not everyone loves Python. RIA has a full GUI for background subtraction, thresholding, and dragging-and-dropping ROIs.
+* **Trust Your Data**: We don't hide the numbers. You get the visual stacks, but you also get the **raw float32 ratio data** and time-series CSVs. You can take these straight to Prism, Origin, or Excel.
 
 ## 📁 Project Structure
 
 ```text
 RatioImagingAnalyzer/
-├── data/               # Example TIFF data for testing
-├── paper/              # JOSS paper draft and assets
-├── src/                # Source code
-│   ├── main.py         # Entry point
-│   ├── gui.py          # User Interface logic
-│   ├── processing.py   # Core algorithms
-│   └── components.py   # UI widgets
-├── tests/              # Unit tests
-└── requirements.txt    # Python dependencies
-```
+├── data/               # Sample TIFFs so you can try it out immediately
+├── paper/              # JOSS submission files
+├── src/                # The actual code
+│   ├── main.py         # Start here
+│   ├── gui.py          # The frontend logic
+│   ├── processing.py   # The math/algorithm heavy lifting
+│   └── components.py   # UI Widgets
+├── tests/              # Automated tests to keep bugs away
+└── requirements.txt    # Dependencies
 
 ## 🚀 Installation
 
