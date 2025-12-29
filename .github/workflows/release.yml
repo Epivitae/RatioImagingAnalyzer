@@ -11,7 +11,7 @@ jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: write # 必须开启写入权限以发布 Release
+      contents: write # 必须开启，否则无法上传 Release
 
     steps:
       - name: Checkout Code
@@ -20,21 +20,21 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10' # 保持与本地环境一致
+          python-version: '3.10' # 保持稳定版本
 
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          # 1. 强制卸载 GitHub 环境中导致体积膨胀的 MKL 重型数学库
+          # 1. 强力卸载 GitHub 预装的“体积杀手” (MKL 和相关库)
           pip uninstall -y mkl mkl-service intel-openmp tbb
-          # 2. 安装轻量版科学计算依赖 (使用 headless 版 OpenCV 和 base 版 Matplotlib)
-          pip install --no-cache-dir numpy==1.26.4 matplotlib-base tifffile requests scipy opencv-python-headless pyinstaller
+          # 2. 安装标准依赖 (注意：使用 matplotlib 标准版，但在打包时剔除后端)
+          pip install --no-cache-dir numpy==1.26.4 matplotlib==3.8.4 tifffile requests scipy opencv-python-headless pyinstaller
 
       - name: Get Version
         id: get_version
         shell: bash
         run: |
-          # 提取版本号用于文件名和 Tag
+          # 提取版本号，用于命名
           VERSION=$(grep "__version__" src/_version.py | cut -d '"' -f 2)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "tag=$VERSION" >> $GITHUB_OUTPUT
@@ -42,10 +42,10 @@ jobs:
       - name: Build with PyInstaller
         shell: pwsh
         run: |
-          # [核心修复 1] 设置 PYTHONPATH 确保 Python 能识别 src 内部的模块引用，解决 NameError
+          # [关键点 1] 设置 PYTHONPATH，让 PyInstaller 能找到 src 内部的模块，解决 NameError
           $env:PYTHONPATH = "src" 
           
-          # [核心修复 2] 正确处理资产路径，将 assets 文件夹完整打包到运行时的根目录下
+          # [关键点 2] 暴力排除不需要的重型库，将体积压回 ~60MB
           pyinstaller --noconfirm --onefile --windowed `
           --icon "assets/app_256x256.ico" `
           --name "RIA_${{ env.VERSION }}" `
@@ -54,8 +54,17 @@ jobs:
           --exclude-module "PIL" `
           --exclude-module "mkl" `
           --exclude-module "libopenblas" `
-          --exclude-module "matplotlib.tests" `
           --exclude-module "tkinter.test" `
+          --exclude-module "unittest" `
+          --exclude-module "matplotlib.tests" `
+          --exclude-module "matplotlib.backends.backend_qt5agg" `
+          --exclude-module "matplotlib.backends.backend_qt5" `
+          --exclude-module "PyQt5" `
+          --exclude-module "PyQt6" `
+          --exclude-module "PySide2" `
+          --exclude-module "PySide6" `
+          --exclude-module "IPython" `
+          --exclude-module "jedi" `
           --paths "src" `
           "src/main.py"
 
@@ -64,14 +73,16 @@ jobs:
         with:
           tag_name: ${{ env.VERSION }}
           name: Ratio Imaging Analyzer ${{ env.VERSION }}
+          draft: false
+          prerelease: false
           files: dist/RIA_${{ env.VERSION }}.exe
           body: |
-            ## RIA ${{ env.VERSION }} - Lightweight Release
+            ## RIA ${{ env.VERSION }}
             Automated build via GitHub Actions.
             
-            ### 🛠️ Fixed in this version:
-            - **ECC Motion Correction**: Enhanced sub-pixel alignment logic.
-            - **Binary Size**: Compressed to ~60MB by removing MKL overhead.
-            - **Path Resolution**: Fixed registration and icon resource loading issues.
+            ### 🚀 Updates
+            - **ECC Motion Correction**: Added sub-pixel image registration.
+            - **Lightweight**: Optimized binary size (~60MB).
+            - **Resources**: Fixed icon loading issues.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
