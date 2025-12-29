@@ -70,7 +70,7 @@ class RatioAnalyzerApp:
         self.ui_elements = {}
         self.root.geometry("1080x980")
         self.root.configure(bg="#F0F2F5") 
-        self.root.minsize(1000, 600)
+        self.root.minsize(1000, 900)
         
         try:
             icon_path = self.get_asset_path("ratiofish.ico")
