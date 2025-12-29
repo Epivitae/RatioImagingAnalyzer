@@ -25,10 +25,9 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          # 1. 卸载可能存在的 MKL (体积优化)
+          # 1. 卸载 MKL (这是体积变大的头号元凶，本地可能没有或你也用不到)
           pip uninstall -y mkl mkl-service intel-openmp tbb
-          # 2. 安装标准依赖
-          # 注意：这里不强制 uninstall matplotlib，直接安装即可
+          # 2. 安装完整依赖 (不阉割 Pillow 或 SciPy，确保代码能跑)
           pip install --no-cache-dir numpy==1.26.4 matplotlib==3.8.4 tifffile requests scipy opencv-python-headless pyinstaller
 
       - name: Get Version
@@ -41,32 +40,40 @@ jobs:
       - name: Build with PyInstaller
         shell: pwsh
         run: |
-          # 修复路径：确保 PyInstaller 能找到 src 下的模块
-          $env:PYTHONPATH = "src" 
+          # --- [路径重构：模拟本地环境] ---
+          # 获取 src 文件夹在 CI 机器上的绝对路径
+          $SrcPath = "${{ github.workspace }}\src"
+          echo "Setting PYTHONPATH to: $SrcPath"
           
+          # 强制将 src 加入环境变量，确保 import gui_components 100% 成功
+          $env:PYTHONPATH = "$SrcPath" 
+          
+          # --- [打包命令] ---
           pyinstaller --noconfirm --onefile --windowed `
           --icon "assets/app_256x256.ico" `
           --name "RIA_${{ env.VERSION }}" `
           --clean --optimize "1" `
           --add-data "assets;assets" `
-          --paths "src" `
+          --paths "$SrcPath" `
           --exclude-module "tkinter.test" `
           --exclude-module "unittest" `
           --exclude-module "matplotlib.tests" `
+          --exclude-module "mkl" `
+          --exclude-module "libopenblas" `
+          --exclude-module "IPython" `
+          --exclude-module "jedi" `
           --exclude-module "matplotlib.backends.backend_qt5agg" `
           --exclude-module "matplotlib.backends.backend_qt5" `
           --exclude-module "PyQt5" `
           --exclude-module "PyQt6" `
           --exclude-module "PySide2" `
           --exclude-module "PySide6" `
-          --exclude-module "IPython" `
-          --exclude-module "jedi" `
-          --exclude-module "lib2to3" `
           "src/main.py"
-          # 关键修正：
-          # 1. 删除了 --exclude-module "PIL" (修复报错)
-          # 2. 删除了 --exclude-module "scipy.*" (修复报错，确保拟合功能可用)
-          # 3. 保留了对 Qt/PyQt 的排除 (确保体积控制在 70MB 左右)
+          
+          # 说明：
+          # 1. 这里的 --paths 和 $env:PYTHONPATH 双重保险，解决了 NameError。
+          # 2. 我们移除了 --exclude-module "PIL" 和 "scipy"，解决了依赖崩溃。
+          # 3. 保留了 Qt/MKL 的排除，保证体积控制在 70MB 左右。
 
       - name: Create Release and Upload Asset
         uses: softprops/action-gh-release@v2
@@ -78,8 +85,8 @@ jobs:
             ## RIA ${{ env.VERSION }}
             Automated build via GitHub Actions.
             
-            ### 🚀 Status
-            - **Functionality**: Full support for fitting and plotting (SciPy/PIL enabled).
-            - **Size**: Optimized (~70MB) by removing unused Qt frameworks.
+            ### 🚀 Updates
+            - **Fixed**: Resolved Import/Path errors by enforcing absolute PYTHONPATH.
+            - **Size**: Optimized (~70MB) while keeping all scientific features active.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
