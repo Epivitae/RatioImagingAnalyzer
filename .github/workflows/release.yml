@@ -1,0 +1,62 @@
+name: Auto Release RIA EXE
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/_version.py' # 仅在版本号文件变化时触发
+
+jobs:
+  build:
+    runs-on: windows-latest # 在 Windows 环境下打包以生成 .exe
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10' # 建议锁定一个稳定的 Python 版本
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy matplotlib tifffile requests scipy opencv-python-headless pyinstaller
+
+      - name: Get Version
+        id: get_version
+        shell: bash
+        run: |
+          # 从 _version.py 中提取版本字符串 (例如 v1.7.8)
+          VERSION=$(grep "__version__" src/_version.py | cut -d '"' -f 2)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "tag=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller --noconfirm --onefile --windowed `
+          --icon "assets/app_256x256.ico" `
+          --name "RIA_${{ env.VERSION }}" `
+          --clean --optimize "1" `
+          --add-data "assets;assets" `
+          --exclude-module "PIL" `
+          "src/main.py"
+
+      - name: Create Release and Upload Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.VERSION }}
+          name: Ratio Imaging Analyzer ${{ env.VERSION }}
+          draft: false
+          prerelease: false
+          files: dist/RIA_${{ env.VERSION }}.exe
+          body: |
+            ## RIA ${{ env.VERSION }} Release
+            Automated build for Ratio Imaging Analyzer.
+            
+            ### 🛠️ Quick Start
+            Download the `.exe` below and run it directly. No installation required.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
