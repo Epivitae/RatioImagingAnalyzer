@@ -3,9 +3,9 @@ name: Run Tests
 # 触发机制：当 push 到 main/master 分支，或者有人提交 Pull Request 时触发
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "dev" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main", "dev" ]
 
 jobs:
   test:
