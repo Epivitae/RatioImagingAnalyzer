@@ -367,59 +367,65 @@ class RoiManager:
             args=(data1, data2, bg1, bg2, interval, unit, is_log, do_norm, task_list, int_thresh, ratio_thresh)
         ).start()
 
-    # [修改] 使用阈值进行严格过滤
+    # [核心修改] 性能优化版本：仅计算 Mask 内部的像素比率，避免全图计算导致内存溢出
     def _calc_multi_roi_thread(self, data1, data2, bg1, bg2, interval, unit, is_log, do_norm, task_list, int_thresh, ratio_thresh):
         try:
             results = []
-            d1_clean = data1 - bg1
-            d2_clean = data2 - bg2
-            
-            # Clip 负值 (NaN 保持不变)
-            d1_clean = np.clip(d1_clean, 0, None)
-            d2_clean = np.clip(d2_clean, 0, None)
-            
-            # [关键修复] 构建严格的有效性掩膜 (与 Save Stack 逻辑一致)
-            # 过滤掉强度低于 int_thresh 的像素
-            # 过滤掉分母接近 0 的像素 (插值噪声/黑边)
-            mask_valid = (d1_clean > int_thresh) & (d2_clean > int_thresh) & (d2_clean > 0.001)
-
-            with np.errstate(divide='ignore', invalid='ignore'):
-                # 初始化为 NaN
-                ratio_stack = np.full_like(d1_clean, np.nan)
-                
-                # 只在有效区域计算除法
-                np.divide(d1_clean, d2_clean, out=ratio_stack, where=mask_valid)
-                
-                # (可选) 如果需要分子为0时结果为0，可以取消下面注释，但通常保持NaN更安全
-                # ratio_stack[(d1_clean == 0) & mask_valid] = 0
-
-            # 应用比率阈值
-            if ratio_thresh > 0:
-                ratio_stack[ratio_stack < ratio_thresh] = np.nan
             
             for item in task_list:
                 mask = item['mask']
                 y_idxs, x_idxs = np.where(mask)
-                if len(y_idxs) == 0:
-                    means = np.zeros(ratio_stack.shape[0])
-                else:
-                    # [关键] nanmean 会忽略所有无效/过滤掉的像素 (NaN)
-                    roi_pixels = ratio_stack[:, y_idxs, x_idxs]
-                    means = np.nanmean(roi_pixels, axis=1)
                 
-                # 如果整帧 ROI 全是 NaN，结果是 NaN，转为 0 方便画图
+                # 如果 ROI 是空的，结果全为 0
+                if len(y_idxs) == 0:
+                    means = np.zeros(data1.shape[0])
+                    results.append({'id': item['id'], 'color': item['color'], 'means': means})
+                    continue
+                
+                # --- 1. 切片提取：只把 ROI 区域的原始数据拿出来 ---
+                # Numpy 高级索引会创建副本，但因为 ROI 区域通常远小于全图，内存占用极低
+                # Shape: (Frames, N_Pixels)
+                roi_d1 = data1[:, y_idxs, x_idxs].astype(np.float32) - bg1
+                roi_d2 = data2[:, y_idxs, x_idxs].astype(np.float32) - bg2
+                
+                # --- 2. 处理负值 (Clip) ---
+                roi_d1 = np.clip(roi_d1, 0, None)
+                roi_d2 = np.clip(roi_d2, 0, None)
+                
+                # --- 3. 构建有效掩膜 (Valid Mask) ---
+                # 过滤条件：强度必须高于阈值，且分母不能接近 0
+                mask_valid = (roi_d1 > int_thresh) & (roi_d2 > int_thresh) & (roi_d2 > 0.001)
+                
+                # --- 4. 计算比率 ---
+                # 初始化为 NaN，只在有效位置计算除法
+                roi_ratio = np.full_like(roi_d1, np.nan)
+                np.divide(roi_d1, roi_d2, out=roi_ratio, where=mask_valid)
+                
+                # --- 5. 应用比率阈值 ---
+                if ratio_thresh > 0:
+                    roi_ratio[roi_ratio < ratio_thresh] = np.nan
+                
+                # --- 6. 计算每一帧的均值 ---
+                # axis=1 代表沿着像素维度求均值 (Frame, Pixel) -> (Frame,)
+                means = np.nanmean(roi_ratio, axis=1)
+                
+                # 将全 NaN 的帧置为 0，防止绘图出错
                 means = np.nan_to_num(means, nan=0.0)
                 
+                # --- 7. (可选) 归一化 ΔR/R0 ---
                 if do_norm:
                     valid_mask = means > 1e-6
                     if np.any(valid_mask):
                         valid_vals = means[valid_mask]
+                        # 自动寻找基线：取所有有效值中最小的 5% 作为基线 R0
                         thresh_5 = np.percentile(valid_vals, 5)
                         baseline_vals = valid_vals[valid_vals <= thresh_5]
+                        
                         if len(baseline_vals) > 0:
                             r0 = np.mean(baseline_vals)
                         else:
                             r0 = np.mean(valid_vals)
+                            
                         if r0 > 1e-6:
                             means = (means - r0) / r0
                         else:
@@ -435,12 +441,15 @@ class RoiManager:
 
             if not results: return
 
+            # 时间轴换算
             mult = 1.0
             if unit == "m": mult = 1.0/60.0
             elif unit == "h": mult = 1.0/3600.0
             times = np.arange(len(results[0]['means'])) * interval * mult
             
+            # 调度回主线程显示窗口
             self.app.root.after(0, lambda: self._show_window(times, results, unit, is_log, do_norm))
+            
         except Exception as e:
             print(f"Calc Error: {e}")
         finally:
@@ -511,5 +520,5 @@ class RoiManager:
                 btn_widget.configure(text=original_text, state="normal")
             except: pass
             
-        btn_widget.configure(text="笨Copied!", state="disabled")
+        btn_widget.configure(text="✔ Copied!", state="disabled")
         self.app.root.after(1000, restore)

@@ -11,6 +11,7 @@ import datetime
 import threading
 import requests
 import webbrowser
+#from PIL import Image, ImageTk
 
 # --- Import Components ---
 try:
@@ -100,6 +101,17 @@ class RatioAnalyzerApp:
         self.change_font_size(0)
         
         self.root.after(100, self.load_graphics_engine)
+
+    # --- [New] Thread Safe Helper ---
+    def thread_safe_config(self, widget, **kwargs):
+        """
+        线程安全地更新组件属性。
+        使用 root.after 将更新操作调度回主线程。
+        """
+        try:
+            self.root.after(0, lambda: widget.config(**kwargs))
+        except Exception as e:
+            print(f"UI Update Error: {e}")
 
     def setup_theme(self):
         style = ttk.Style()
@@ -694,18 +706,18 @@ class RatioAnalyzerApp:
     
     def save_stack_task(self):
         try:
-            self.ui_elements["btn_save_stack"].config(state="disabled", text="⏳ Saving...")
+            self.thread_safe_config(self.ui_elements["btn_save_stack"], state="disabled", text="⏳ Saving...")
             ts = datetime.datetime.now().strftime("%H%M%S")
             path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Ratio_Stack_{ts}.tif")
             if not path: return
             with tiff.TiffWriter(path, bigtiff=True) as tif:
                 for i in range(self.data1.shape[0]):
-                    if i%10==0: self.ui_elements["btn_save_stack"].config(text=f"⏳ {i}/{self.data1.shape[0]}")
+                    if i%10==0: self.thread_safe_config(self.ui_elements["btn_save_stack"], text=f"⏳ {i}/{self.data1.shape[0]}")
                     tif.write(self.get_processed_frame(i).astype(np.float32), contiguous=True)
-            messagebox.showinfo("OK", f"Saved: {path}")
-        except Exception as e: messagebox.showerror("Err", str(e))
+            self.root.after(0, lambda: messagebox.showinfo("OK", f"Saved: {path}"))
+        except Exception as e: self.root.after(0, lambda: messagebox.showerror("Err", str(e)))
         finally: 
-            self.ui_elements["btn_save_stack"].config(state="normal", text=self.t("btn_save_stack"))
+            self.thread_safe_config(self.ui_elements["btn_save_stack"], state="normal", text=self.t("btn_save_stack"))
 
     def save_raw_thread(self):
         if self.data1 is None: return
@@ -713,13 +725,13 @@ class RatioAnalyzerApp:
 
     def save_raw_task(self):
         try:
-            self.ui_elements["btn_save_raw"].config(state="disabled", text="⏳ Saving...")
+            self.thread_safe_config(self.ui_elements["btn_save_raw"], state="disabled", text="⏳ Saving...")
             ts = datetime.datetime.now().strftime("%H%M%S")
             path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Clean_Ratio_Stack_{ts}.tif")
             if not path: return
             with tiff.TiffWriter(path, bigtiff=True) as tif:
                 for i in range(self.data1.shape[0]):
-                    if i%10==0: self.ui_elements["btn_save_raw"].config(text=f"⏳ {i}/{self.data1.shape[0]}")
+                    if i%10==0: self.thread_safe_config(self.ui_elements["btn_save_raw"], text=f"⏳ {i}/{self.data1.shape[0]}")
                     ratio_frame = process_frame_ratio(
                         self.data1[i], self.data2[i],
                         self.cached_bg1, self.cached_bg2,
@@ -727,10 +739,10 @@ class RatioAnalyzerApp:
                         smooth_size=0, log_scale=False
                     )
                     tif.write(ratio_frame.astype(np.float32), contiguous=True)
-            messagebox.showinfo("OK", f"Saved Clean Ratio Stack: {path}")
-        except Exception as e: messagebox.showerror("Err", str(e))
+            self.root.after(0, lambda: messagebox.showinfo("OK", f"Saved Clean Ratio Stack: {path}"))
+        except Exception as e: self.root.after(0, lambda: messagebox.showerror("Err", str(e)))
         finally: 
-            self.ui_elements["btn_save_raw"].config(state="normal", text=self.t("btn_save_raw"))
+            self.thread_safe_config(self.ui_elements["btn_save_raw"], state="normal", text=self.t("btn_save_raw"))
 
     def save_current_frame(self):
         if self.data1 is None: return
@@ -778,7 +790,7 @@ class RatioAnalyzerApp:
         except Exception as e:
             self.root.after(0, lambda: messagebox.showerror("Error", f"{self.t('err_check')}{str(e)}"))
         finally:
-            self.root.after(0, lambda: self.btn_update.config(state="normal"))
+            self.thread_safe_config(self.btn_update, state="normal")
 
     def is_newer_version(self, latest, current):
         def parse_ver(v_str):
