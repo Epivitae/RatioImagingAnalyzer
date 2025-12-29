@@ -1,5 +1,5 @@
 ---
-title: 'Ratio Imaging Analyzer (RIA): A Lightweight, Standalone Python Tool for Portable Ratiometric Fluorescence Analysis'
+title: 'Ratio Imaging Analyzer (RIA/莉丫): A Lightweight, Standalone Python Tool for Portable Ratiometric Fluorescence Analysis'
 tags:
   - Python
   - biology
@@ -17,7 +17,7 @@ authors:
 affiliations:
  - name: Center for Excellence in Brain Science and Intelligence Technology (Institute of Neuroscience), Chinese Academy of Sciences, 320 Yue Yang Road, Shanghai, 200031 P.R.China
    index: 1
-date: 28 December 2025
+date: 29 December 2025
 bibliography: paper.bib
 ---
 
