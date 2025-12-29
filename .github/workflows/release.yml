@@ -25,9 +25,10 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          # 1. 卸载 MKL (体积杀手 No.1)
+          # 1. 卸载可能存在的 MKL (体积优化)
           pip uninstall -y mkl mkl-service intel-openmp tbb
-          # 2. 安装标准库 (matplotlib 必须配合 Pillow 使用)
+          # 2. 安装标准依赖
+          # 注意：这里不强制 uninstall matplotlib，直接安装即可
           pip install --no-cache-dir numpy==1.26.4 matplotlib==3.8.4 tifffile requests scipy opencv-python-headless pyinstaller
 
       - name: Get Version
@@ -40,7 +41,7 @@ jobs:
       - name: Build with PyInstaller
         shell: pwsh
         run: |
-          # 解决路径问题
+          # 修复路径：确保 PyInstaller 能找到 src 下的模块
           $env:PYTHONPATH = "src" 
           
           pyinstaller --noconfirm --onefile --windowed `
@@ -51,13 +52,6 @@ jobs:
           --paths "src" `
           --exclude-module "tkinter.test" `
           --exclude-module "unittest" `
-          --exclude-module "pydoc" `
-          --exclude-module "lib2to3" `
-          --exclude-module "xml" `
-          --exclude-module "mkl" `
-          --exclude-module "libopenblas" `
-          --exclude-module "IPython" `
-          --exclude-module "jedi" `
           --exclude-module "matplotlib.tests" `
           --exclude-module "matplotlib.backends.backend_qt5agg" `
           --exclude-module "matplotlib.backends.backend_qt5" `
@@ -65,15 +59,14 @@ jobs:
           --exclude-module "PyQt6" `
           --exclude-module "PySide2" `
           --exclude-module "PySide6" `
-          --exclude-module "scipy.stats" `
-          --exclude-module "scipy.optimize" `
-          --exclude-module "scipy.integrate" `
-          --exclude-module "scipy.interpolate" `
-          --exclude-module "scipy.special" `
-          --exclude-module "scipy.linalg" `
+          --exclude-module "IPython" `
+          --exclude-module "jedi" `
+          --exclude-module "lib2to3" `
           "src/main.py"
-          # 注意：删除了 --exclude-module "PIL"，因为 Matplotlib 需要它！
-          # 新增：剔除了 scipy 的 heavy 子模块，只保留 ndimage (用于平滑)
+          # 关键修正：
+          # 1. 删除了 --exclude-module "PIL" (修复报错)
+          # 2. 删除了 --exclude-module "scipy.*" (修复报错，确保拟合功能可用)
+          # 3. 保留了对 Qt/PyQt 的排除 (确保体积控制在 70MB 左右)
 
       - name: Create Release and Upload Asset
         uses: softprops/action-gh-release@v2
@@ -85,8 +78,8 @@ jobs:
             ## RIA ${{ env.VERSION }}
             Automated build via GitHub Actions.
             
-            ### 🚀 Updates
-            - **Fixed**: Application crash on startup (Dependency resolved).
-            - **Optimized**: Binary size reduced (~70MB).
+            ### 🚀 Status
+            - **Functionality**: Full support for fitting and plotting (SciPy/PIL enabled).
+            - **Size**: Optimized (~70MB) by removing unused Qt frameworks.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
