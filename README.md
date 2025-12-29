@@ -38,6 +38,7 @@ RatioImagingAnalyzer/
 │   └── components.py   # UI Widgets
 ├── tests/              # Automated tests to keep bugs away
 └── requirements.txt    # Dependencies
+```
 
 ## 🚀 Installation
 
