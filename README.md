@@ -12,7 +12,9 @@ Ratiometric imaging is a powerful technique for visualizing dynamic biological p
 
 It provides a user-friendly Graphical User Interface (GUI) to perform background subtraction, thresholding, and real-time ROI (Region of Interest) analysis without requiring any programming knowledge.
 
-<img src="assets/figure/analysis.gif" width="600" alt="RIA Interface">
+<p align="center">
+  <img src="assets/figure/analysis.gif" width="70%" alt="RIA Interface">
+</p>
 
 ## ✨ Key Features
 
