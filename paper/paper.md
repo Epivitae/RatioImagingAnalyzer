@@ -6,7 +6,8 @@ tags:
   - fluorescence imaging
   - ratiometric analysis
   - genetically encoded indicator
-  - tryptophan sensor
+  - motion correction
+  - computer vision
   - graphical user interface
 authors:
   - name: Kui Wang
@@ -24,37 +25,37 @@ bibliography: paper.bib
 
 Ratiometric fluorescence imaging stands as a cornerstone technique in modern quantitative biology. By measuring the ratio of fluorescence intensities at two distinct wavelengths, this method renders measurements independent of sensor concentration, optical path length, and uneven illumination, making it the "gold standard" for quantifying dynamic intracellular events [@Tao:2023]. Its application spans from monitoring ion dynamics (e.g., Calcium, pH) to tracking essential metabolites (e.g., tryptophan, ATP) using an expanding toolkit of genetically encoded biosensors.
 
-**Ratio Imaging Analyzer (RIA)** is a lightweight, open-source desktop application designed to streamline the processing of such ratiometric data. Unlike complex image processing libraries that require scripting skills, RIA bridges the gap between raw data and biological insight through a user-friendly Graphical User Interface (GUI). It empowers researchers to perform dynamic background subtraction, interative thresholding, and real-time Region of Interest (ROI) analysis on standard personal computers, facilitating rapid hypothesis testing and data exploration.
+**Ratio Imaging Analyzer (RIA)** is a lightweight, open-source desktop application designed to streamline the processing of such ratiometric data. Unlike complex image processing libraries that require scripting skills, RIA bridges the gap between raw data and biological insight through a user-friendly Graphical User Interface (GUI). It empowers researchers to perform motion correction, dynamic background subtraction, interactive thresholding, and real-time Region of Interest (ROI) analysis on standard personal computers, facilitating rapid hypothesis testing and data exploration.
 
 ![The main user interface of RIA. The left panel provides intuitive controls for calculation parameters, while the central canvas displays the processed pseudocolor ratiometric image.](images/figure1.png){width=40%}
 
 # Statement of Need
 
-Despite the widespread adoption of ratiometric sensors, quantitative analysis of time-lapse data remains a bottleneck. A significant practical challenge is the "portability" of data analysis. Commercial software packages (e.g., MetaFluor, NIS-Elements) are powerful but are typically tied to image acquisition workstations via hardware dongles or restrictive licenses. This forces researchers to perform analysis in the microscope room, limiting flexibility and efficiency.
+Despite the widespread adoption of ratiometric sensors, quantitative analysis of time-lapse data remains a bottleneck. A significant gap exists for user-friendly tools tailored to "wet-lab" experimental biologists who lack programming expertise.
 
-Furthermore, open-source alternatives like ImageJ/Fiji [@Schindelin:2012], while versatile, often require complex, multi-step manual workflows for ratiometric stacks (e.g., channel splitting, background subtraction, calculator operations) or rely on legacy plugins that may not be optimized for modern large datasets. Custom Python or MATLAB scripts offer flexibility but lack accessibility for wet-lab biologists without programming expertise.
+While commercial software packages (e.g., MetaFluor) are powerful, they are often tied to acquisition workstations via hardware dongles, limiting accessibility. Conversely, open-source alternatives have struggled to provide a modern, integrated experience. For instance, legacy ImageJ plugins like *Color Ratio Plus* are largely deprecated and difficult to access. Critically, these older tools often lack essential dynamic features required for modern analysis, such as adjustable Look-Up Tables (LUTs), real-time background subtraction, and motion correction.
 
-**RIA** addresses these critical needs by providing a dedicated, standalone executable that:
+**RIA** addresses these challenges by offering a lightweight, **"all-in-one"** standalone executable. It streamlines the entire workflow—from loading raw TIFF stacks to generating publication-quality ratiometric movies—without requiring complex plugin installations or script assembly. Specifically, RIA:
 
-1.  **Decouples Acquisition from Analysis**: Researchers can process data on their personal laptops (Windows) without installing Python environments or purchasing licenses, enabling analysis outside the laboratory.
-2.  **Standardizes Workflow**: It encapsulates the mathematical rigor of ratiometric calculation $R = (Ch1 - Bg1) / (Ch2 - Bg2)$ into an automated, "drag-and-drop" interface, ensuring reproducibility.
-3.  **Enhances Efficiency**: Utilizing vectorized operations from `NumPy` [@Harris:2020], RIA processes large multi-page TIFF stacks instantly, providing real-time feedback that is essential for screening large libraries of sensor variants.
-
+1.  **Eliminates Technical Barriers**: Researchers can process data on standard personal laptops (Windows) without setting up Python environments.
+2.  **Integrates Essential Tools**: Unlike piecemeal solutions, RIA bundles motion correction (ECC), interactive thresholding, and tunable visualization into a single interface.
+3.  **Enhances Efficiency**: Utilizing vectorized operations from `NumPy` [@Harris:2020] and the C++ backend of `OpenCV` [@Bradski:2000], RIA processes large datasets instantly, enabling rapid screening of sensor variants.
 # Implementation
 
-RIA is developed in Python 3, utilizing `tkinter` for a native, dependency-minimal Graphical User Interface (GUI). The software architecture separates the UI logic from the core processing engine to ensure responsiveness.
+RIA is developed in Python 3, utilizing `tkinter` for a native, dependency-minimal Graphical User Interface (GUI). The software architecture separates the UI logic from the core processing engine to ensure responsiveness. Recent updates have focused on minimizing the software footprint (~73 MB) and maximizing processing speed.
 
 ![Interactive analysis workflow. Selecting a Region of Interest (ROI) on the image (left) triggers the instant calculation and plotting of the mean ratio over time (right).](images/figure2.png){width=40%}
 
 Key technical features include:
 
-* **Vectorized Processing**: The core ratiometric calculation is implemented using `NumPy` array operations, optimized for performance on standard CPUs.
-* **NaN-safe Spatial Smoothing**: To preserve morphological details during noise reduction, RIA implements a custom normalized convolution algorithm (adapted from `scipy.ndimage` [@Virtanen:2020]). This method handles `NaN` values (masked background) correctly, preventing the erosion of data at cellular edges common in standard Gaussian filtering.
+* **High-Performance Image Processing**: To achieve real-time performance on consumer-grade CPUs, RIA leverages `OpenCV-headless` [@Bradski:2000]. This replaces heavier dependencies like `SciPy`, significantly reducing application size and startup time.
+* **Motion Correction**: RIA integrates the Enhanced Correlation Coefficient (ECC) algorithm to automatically align image stacks, correcting for sample drift during long-term imaging sessions.
+* **Normalized Convolution for Smoothing**: Standard Gaussian blurring can introduce artifacts at image boundaries containing `NaN` values (masked background). RIA implements a custom **Normalized Convolution** algorithm using OpenCV primitives. This approach computes the weighted average of valid pixels only, preventing the propagation of `NaN` values and preserving data integrity at cellular edges.
 * **Interactive Visualization**: The plotting engine, powered by `Matplotlib` [@Hunter:2007], features a threaded observer pattern. This allows users to draw and drag ROIs on the video stream with instant updates to the time-course trace, facilitating rapid identification of physiological events.
-* **Data Integrity**: RIA supports exporting the raw `float32` ratio stack, ensuring that downstream statistical analysis is based on unaltered calculation results.
+* **Memory Optimization**: Large TIFF stacks are handled using memory-efficient IO strategies, maintaining data in `uint16` format until calculation to minimize RAM usage.
 
 # Acknowledgements
 
-We acknowledge the open-source community for maintaining the foundational libraries that make this tool possible.
+We acknowledge the open-source community for maintaining the foundational libraries that make this tool possible, specifically NumPy, Matplotlib, and OpenCV.
 
 # References
