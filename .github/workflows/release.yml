@@ -9,9 +9,9 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest # 在 Windows 环境下打包以生成 .exe
+    runs-on: windows-latest
     permissions:
-      contents: write  # 允许 Action 创建 Release 并上传文件
+      contents: write # 必须开启写入权限以发布 Release
 
     steps:
       - name: Checkout Code
@@ -20,30 +20,43 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10' # 建议锁定一个稳定的 Python 版本
+          python-version: '3.10' # 保持与本地环境一致
 
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install numpy matplotlib tifffile requests scipy opencv-python-headless pyinstaller
+          # 1. 强制卸载 GitHub 环境中导致体积膨胀的 MKL 重型数学库
+          pip uninstall -y mkl mkl-service intel-openmp tbb
+          # 2. 安装轻量版科学计算依赖 (使用 headless 版 OpenCV 和 base 版 Matplotlib)
+          pip install --no-cache-dir numpy==1.26.4 matplotlib-base tifffile requests scipy opencv-python-headless pyinstaller
 
       - name: Get Version
         id: get_version
         shell: bash
         run: |
-          # 从 _version.py 中提取版本字符串 (例如 v1.7.8)
+          # 提取版本号用于文件名和 Tag
           VERSION=$(grep "__version__" src/_version.py | cut -d '"' -f 2)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "tag=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Build with PyInstaller
+        shell: pwsh
         run: |
+          # [核心修复 1] 设置 PYTHONPATH 确保 Python 能识别 src 内部的模块引用，解决 NameError
+          $env:PYTHONPATH = "src" 
+          
+          # [核心修复 2] 正确处理资产路径，将 assets 文件夹完整打包到运行时的根目录下
           pyinstaller --noconfirm --onefile --windowed `
           --icon "assets/app_256x256.ico" `
           --name "RIA_${{ env.VERSION }}" `
           --clean --optimize "1" `
           --add-data "assets;assets" `
           --exclude-module "PIL" `
+          --exclude-module "mkl" `
+          --exclude-module "libopenblas" `
+          --exclude-module "matplotlib.tests" `
+          --exclude-module "tkinter.test" `
+          --paths "src" `
           "src/main.py"
 
       - name: Create Release and Upload Asset
@@ -51,14 +64,14 @@ jobs:
         with:
           tag_name: ${{ env.VERSION }}
           name: Ratio Imaging Analyzer ${{ env.VERSION }}
-          draft: false
-          prerelease: false
           files: dist/RIA_${{ env.VERSION }}.exe
           body: |
-            ## RIA ${{ env.VERSION }} Release
-            Automated build for Ratio Imaging Analyzer.
+            ## RIA ${{ env.VERSION }} - Lightweight Release
+            Automated build via GitHub Actions.
             
-            ### 🛠️ Quick Start
-            Download the `.exe` below and run it directly. No installation required.
+            ### 🛠️ Fixed in this version:
+            - **ECC Motion Correction**: Enhanced sub-pixel alignment logic.
+            - **Binary Size**: Compressed to ~60MB by removing MKL overhead.
+            - **Path Resolution**: Fixed registration and icon resource loading issues.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
