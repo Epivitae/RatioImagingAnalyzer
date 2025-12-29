@@ -1,0 +1,25 @@
+﻿# Python compiled files
+__pycache__/
+*.pyc
+
+# Distribution / Packaging
+build/
+dist/
+*.spec
+*.pkg
+
+# PyInstaller
+*.manifest
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# VS Code / IDE (Optional)
+.vscode/
+.idea/
+
+# System
+.DS_Store
+Thumbs.db
