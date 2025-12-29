@@ -5,6 +5,17 @@ LANG_MAP = {
     "header_title": {"cn": "Ratio Imaging Analyzer (RIA)", "en": "Ratio Imaging Analyzer (RIA)"},
     "grp_file": {"cn": "1. 文件加载", "en": "1. File Loading"},
     
+    # --- 新增: 预处理模块 ---
+    "grp_pre": {"cn": "1.5 图像校正", "en": "1.5 Image Correction"},
+    "btn_align": {"cn": "✨ 运行运动校正 (ECC)", "en": "✨ Run Motion Correction (ECC)"},
+    "btn_undo_align": {"cn": "↩ 撤销校正", "en": "↩ Undo Correction"},
+    "lbl_align_info": {"cn": "基于 Ch1 校正位移 (需 OpenCV)", "en": "Aligns Ch1 & Ch2 based on Ch1."},
+    "msg_aligning": {"cn": "正在进行 ECC 配准...", "en": "Running ECC Alignment..."},
+    "msg_align_success": {"cn": "配准完成！\n已应用到所有通道。", "en": "Alignment Complete!\nApplied to all channels."},
+    # -----------------------
+
+    "tab_sep": {"cn": " 分别导入 (两文件) ", "en": " Separate Files "},
+
     # --- Tab & Import Labels ---
     "tab_sep": {"cn": " 分别导入 (两文件) ", "en": " Separate Files "},
     "tab_dual": {"cn": " 单文件双通道 ", "en": " Single Dual-Ch File "},

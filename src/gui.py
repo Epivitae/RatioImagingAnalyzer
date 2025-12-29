@@ -30,16 +30,15 @@ except ImportError:
     except ImportError as e:
         print(f"Import Error: {e}. Ensure all modules exist.")
 
-# --- Import Processing (CRITICAL FIX) ---
+# --- Import Processing (Updated) ---
 try:
-    from .processing import calculate_background, process_frame_ratio
+    # [关键修改] 这里增加了 align_stack_ecc 的导入
+    from .processing import calculate_background, process_frame_ratio, align_stack_ecc
 except ImportError:
     try:
-        from processing import calculate_background, process_frame_ratio
+        from processing import calculate_background, process_frame_ratio, align_stack_ecc
     except ImportError as e:
-        # [关键修改] 这里不再 pass，而是打印错误并抛出，让你知道为什么导入失败
         print(f"CRITICAL ERROR: Failed to import processing module. Reason: {e}")
-        # 如果是因为缺少 scipy，这里会提示 No module named 'scipy'
         raise e 
 
 try:
@@ -89,6 +88,10 @@ class RatioAnalyzerApp:
 
         # Data & Flags
         self.data1 = None; self.data2 = None
+        
+        # [新增] 用于存储原始数据的备份 (用于 Undo)
+        self.data1_raw = None; self.data2_raw = None 
+
         self.cached_bg1 = 0; self.cached_bg2 = 0
         
         # Paths
@@ -206,6 +209,8 @@ class RatioAnalyzerApp:
         self.frame_left.pack(fill="both", expand=True)
 
         self.setup_file_group()
+        # [新增] 插入新的配准模块
+        self.setup_preprocess_group()
         self.setup_calc_group()
         self.setup_view_group()
         self.setup_brand_logo()
@@ -260,6 +265,32 @@ class RatioAnalyzerApp:
         self.btn_load = ttk.Button(self.grp_file, command=self.load_data, state="disabled")
         self.btn_load.pack(fill="x", pady=(10, 0))
         self.ui_elements["btn_load"] = self.btn_load
+
+    # --- [新增] 1.5 Pre-processing Group ---
+    def setup_preprocess_group(self):
+        self.grp_pre = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
+        self.grp_pre.pack(fill="x", pady=(0, 10))
+        self.ui_elements["grp_pre"] = self.grp_pre
+        
+        # Info Label
+        self.lbl_align_info = ttk.Label(self.grp_pre, foreground="gray", font=("Segoe UI", 9), style="White.TLabel")
+        self.lbl_align_info.pack(fill="x", pady=(0, 5))
+        self.ui_elements["lbl_align_info"] = self.lbl_align_info
+        
+        # Buttons Row
+        row = ttk.Frame(self.grp_pre, style="White.TFrame")
+        row.pack(fill="x")
+        
+        self.btn_align = ttk.Button(row, command=self.run_alignment_thread, state="disabled")
+        self.btn_align.pack(side="left", fill="x", expand=True, padx=(0, 2))
+        self.ui_elements["btn_align"] = self.btn_align
+        
+        self.btn_undo_align = ttk.Button(row, command=self.undo_alignment, state="disabled", width=4, style="Gray.TButton")
+        self.btn_undo_align.pack(side="right", fill="x")
+        self.ui_elements["btn_undo_align"] = self.btn_undo_align
+        
+        # Progress Bar (默认隐藏)
+        self.pb_align = ttk.Progressbar(self.grp_pre, orient="horizontal", mode="determinate")
 
     def setup_calc_group(self):
         self.grp_calc = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
@@ -538,6 +569,13 @@ class RatioAnalyzerApp:
                 d1, d2 = read_and_split_dual_channel(self.dual_path, self.is_interleaved_var.get())
 
             self.data1, self.data2 = d1, d2
+
+            # [新增] 重置配准备份数据和按钮状态
+            self.data1_raw = None
+            self.data2_raw = None
+            self.btn_undo_align.config(state="disabled")
+            self.btn_align.config(state="normal")
+
             self.recalc_background()
             
             self.frame_scale.configure(to=self.data1.shape[0]-1)
@@ -552,6 +590,75 @@ class RatioAnalyzerApp:
             messagebox.showerror("Error", str(e))
         finally:
             self.root.config(cursor="")
+
+    # --- [新增] ECC Alignment Logic ---
+    def run_alignment_thread(self):
+        if self.data1 is None: return
+        # 锁定 UI
+        self.btn_align.config(state="disabled")
+        self.btn_load.config(state="disabled")
+        self.pb_align.pack(fill="x", pady=(5, 0))
+        self.pb_align["value"] = 0
+        
+        threading.Thread(target=self.alignment_task, daemon=True).start()
+
+    def alignment_task(self):
+        try:
+            # 1. 备份数据 (如果是第一次运行)
+            if self.data1_raw is None:
+                self.data1_raw = self.data1.copy()
+                self.data2_raw = self.data2.copy()
+            
+            # 2. 回调函数更新进度条
+            def progress_cb(curr, total):
+                # 使用 after 在主线程更新 UI
+                self.root.after(0, lambda: self.pb_align.configure(value=(curr/total)*100))
+
+            # 3. 运行核心算法
+            d1_aligned, d2_aligned = align_stack_ecc(self.data1, self.data2, progress_callback=progress_cb)
+            
+            # 4. 更新主数据
+            self.data1 = d1_aligned
+            self.data2 = d2_aligned
+            
+            # 5. 完成后的 UI 更新
+            self.root.after(0, self.alignment_done_ui)
+            
+        except ImportError:
+            self.root.after(0, lambda: messagebox.showerror("Error", "OpenCV not found.\nPlease run: pip install opencv-python"))
+            self.root.after(0, self.alignment_reset_ui)
+        except Exception as e:
+            self.root.after(0, lambda: messagebox.showerror("Alignment Error", str(e)))
+            self.root.after(0, self.alignment_reset_ui)
+
+    def alignment_done_ui(self):
+        self.recalc_background()
+        self.update_plot()
+        self.pb_align.pack_forget()
+        self.btn_load.config(state="normal")
+        self.btn_align.config(state="normal")
+        self.btn_undo_align.config(state="normal") # 启用撤销
+        messagebox.showinfo("RIA", self.t("msg_align_success"))
+
+    def alignment_reset_ui(self):
+        self.pb_align.pack_forget()
+        self.btn_load.config(state="normal")
+        self.btn_align.config(state="normal")
+
+    def undo_alignment(self):
+        if self.data1_raw is not None:
+            self.data1 = self.data1_raw.copy()
+            self.data2 = self.data2_raw.copy()
+            self.recalc_background()
+            self.update_plot()
+            
+            # 状态重置
+            self.data1_raw = None
+            self.data2_raw = None
+            self.btn_undo_align.config(state="disabled")
+            messagebox.showinfo("Undo", "Restored to raw data.")
+
+    # ----------------------------------
 
     def get_processed_frame(self, frame_idx):
         if self.data1 is None: return None
