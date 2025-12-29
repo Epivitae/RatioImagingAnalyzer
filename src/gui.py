@@ -68,7 +68,7 @@ class RatioAnalyzerApp:
         self.VERSION = __version__
         self.current_lang = "en"
         self.ui_elements = {}
-        self.root.geometry("800x1240")
+        self.root.geometry("1080x980")
         self.root.configure(bg="#F0F2F5") 
         self.root.minsize(1000, 600)
         
@@ -264,7 +264,7 @@ class RatioAnalyzerApp:
         row.pack(fill="x")
         
         # [核心修复] 为左侧按钮指定宽度 (width=20)，并取消 expand，确保右侧按钮空间
-        self.btn_align = ttk.Button(row, command=self.run_alignment_thread, state="disabled", width=20)
+        self.btn_align = ttk.Button(row, command=self.run_alignment_thread, state="disabled", width=22)
         self.btn_align.pack(side="left", fill="x", padx=(0, 2))
         self.ui_elements["btn_align"] = self.btn_align
         
@@ -477,7 +477,7 @@ class RatioAnalyzerApp:
         lbl = ttk.Label(h, style="White.TLabel"); lbl.pack(side="left") 
         self.ui_elements[label_key] = lbl
         val_lbl = ttk.Label(h, text=str(variable.get()), foreground="#007acc", font=self.f_bold, style="White.TLabel")
-        val_lbl.pack(side="right")
+        val_lbl.pack(side="right", padx=(0, 10))
         def on_slide(v):
             val = float(v)
             if is_int: val = int(val)
@@ -493,7 +493,7 @@ class RatioAnalyzerApp:
         lbl = ttk.Label(h, style="White.TLabel"); lbl.pack(side="left") 
         self.ui_elements[label_key] = lbl
         val_lbl = ttk.Label(h, text=str(variable.get()), foreground="red", font=self.f_bold, style="White.TLabel")
-        val_lbl.pack(side="right")
+        val_lbl.pack(side="right", padx=(0, 10))
         def on_move(v): val_lbl.config(text=f"{int(float(v))}")
         def on_release(event):
             val = int(self.bg_scale.get())
