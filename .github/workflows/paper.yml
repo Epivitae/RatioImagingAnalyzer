@@ -1,5 +1,12 @@
 name: Draft PDF
-on: [push, pull_request]
+
+on:
+  push:
+    paths:
+      - 'paper/**' # ✅ 只有 paper 文件夹内的变化才会触发 Push
+  pull_request:
+    paths:
+      - 'paper/**' # ✅ 只有 paper 文件夹内的变化才会触发 PR 检查
 
 jobs:
   paper:
@@ -13,12 +20,12 @@ jobs:
         uses: openjournals/openjournals-draft-action@master
         with:
           journal: joss
-          # ✅ 输入路径：指向子文件夹
+          # ✅ 输入路径保持不变
           paper-path: paper/paper.md
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: paper
-          # ✅ 修正点：上传路径也要改成子文件夹
+          # ✅ 输出路径保持不变
           path: paper/paper.pdf
