@@ -1,0 +1,53 @@
+name: 炫耀代码行数 (Update LOC Badge)
+
+on:
+  # 每次推送到主分支时运行
+  push:
+    branches: ["main", "master"]
+  # 每天早上8点自动跑一次（防止你很久没提交，徽章挂掉）
+  schedule:
+    - cron: '0 0 * * *'
+  # 允许手动触发
+  workflow_dispatch:
+
+jobs:
+  update-badge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. 下载并运行 cloc (统计代码行数的工具)
+      - name: Install and Run cloc
+        id: loc
+        run: |
+          sudo apt-get install -y cloc
+          # 统计行数，排除 node_modules 等垃圾文件
+          # sum-one 是总行数，这里用 awk 提取
+          LINES=$(cloc . --exclude-dir=node_modules,dist,build,venv --json | jq '.SUM.code')
+          
+          echo "Current Lines: $LINES"
+          echo "LINES=$LINES" >> $GITHUB_ENV
+          
+          # 2. 根据行数决定颜色 (这是炫耀的关键！)
+          # 小于1千行是绿色，小于1万行是蓝色，大于1万行是橙色，大于5万行是红色（大佬色）
+          if (( $LINES < 1000 )); then
+            echo "COLOR=green" >> $GITHUB_ENV
+          elif (( $LINES < 10000 )); then
+            echo "COLOR=blue" >> $GITHUB_ENV
+          elif (( $LINES < 50000 )); then
+            echo "COLOR=orange" >> $GITHUB_ENV
+          else
+            echo "COLOR=red" >> $GITHUB_ENV
+          fi
+
+      # 3. 更新 Gist 徽章
+      - name: Update Dynamic Badge
+        uses: schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: 65b61a32eaccf5de9624892da2ddd0d8
+          filename: gistfile1.txt      # Gist 里的文件名
+          label: Code Volume       # 徽章左边的文字，随便改，比如 "Power Level"
+          message: ${{ env.LINES }}
+          color: ${{ env.COLOR }}
+          namedLogo: visualstudiocode # 可以加个 Logo，看起来更专业
