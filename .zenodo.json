@@ -1,0 +1,24 @@
+{
+  "title": "Ratio Imaging Analyzer (RIA): A Lightweight, Standalone Python Tool for Portable Ratiometric Fluorescence Analysis",
+  "description": "Ratio Imaging Analyzer (RIA) is a lightweight, open-source desktop application designed to streamline the processing of ratiometric imaging data, specifically for genetically encoded fluorescent sensors.",
+  "creators": [
+    {
+      "name": "Wang, Kui",
+      "affiliation": "Institute of Neuroscience, Center for Excellence in Brain Science and Intelligence Technology, Chinese Academy of Sciences",
+      "orcid": "0000-0002-9436-3632"
+    }
+  ],
+  "access_right": "open",
+  "license": "MIT",
+  "keywords": [
+    "Python",
+    "neuroscience", 
+    "fluorescence imaging",
+    "genetically encoded indicator",
+    "ratiometric analysis",
+    "motion correction",
+    "image processing",
+    "zebrafish"
+  ],
+  "upload_type": "software"
+}
