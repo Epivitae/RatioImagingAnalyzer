@@ -118,8 +118,8 @@ This software relies on the following open-source libraries and methods:
 * **Fiji (Inspiration)**: Schindelin, J., et al. (2012). Fiji: an open-source platform for biological-image analysis. *Nature Methods*, 9(7), 676–682.
 
 ## Citation
-Welcome to use RIA, please cite:
-Wang, K. (2025). Ratio Imaging Analyzer (RIA): A Lightweight, Standalone Python Tool for Portable Ratiometric Fluorescence Analysis (v1.7.9.1). Zenodo. https://doi.org/10.5281/zenodo.18091694
+Welcome to use RIA, please cite:<b>
+Wang, K. (2025). Ratio Imaging Analyzer (RIA): A Lightweight, Standalone Python Tool for Portable Ratiometric Fluorescence Analysis (v1.7.9.1). Zenodo. https://doi.org/10.5281/zenodo.18091694<b>
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18091693-blue)](https://doi.org/10.5281/zenodo.18091693)
 
 
