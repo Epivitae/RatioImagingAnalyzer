@@ -1,11 +1,13 @@
 # Ratio Imaging Analyzer (RIA / 莉丫)
 
 [![Status](https://joss.theoj.org/papers/please-replace-with-your-id/status.svg)](https://joss.theoj.org/papers/@epivitae)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Run Tests](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml/badge.svg)](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml)
-![LOC](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Epivitae/65b61a32eaccf5de9624892da2ddd0d8/raw/gistfile1.txt)
-[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18091693-orange)](https://doi.org/10.5281/zenodo.18091693)
+[![License](https://img.shields.io/github/license/Epivitae/RatioImagingAnalyzer?style=flat-square&color=yellow)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/github/actions/workflow/status/Epivitae/RatioImagingAnalyzer/test.yml?branch=main&label=tests&style=flat-square&color=brightgreen)](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml)
+![LOC](https://img.shields.io/endpoint?style=flat-square&color=blueviolet&url=https://gist.githubusercontent.com/Epivitae/65b61a32eaccf5de9624892da2ddd0d8/raw/gistfile1.txt)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18091693-0099CC?style=flat-square)](https://doi.org/10.5281/zenodo.18091693)
+![Repo Size](https://img.shields.io/github/repo-size/Epivitae/RatioImagingAnalyzer?style=flat-square&color=ff69b4)
+![Visitors](https://visitor-badge.laobi.icu/badge?page_id=Epivitae.RatioImagingAnalyzer)
 
 
 **Meet RIA (or as we affectionately call her, "Li Ya / 莉丫").**
