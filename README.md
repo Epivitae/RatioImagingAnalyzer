@@ -59,6 +59,19 @@ RatioImagingAnalyzer/
 
 ## 🚀 Installation
 
+### Option 0: Install via PyPI (Recommended)
+
+RIA is available on the Python Package Index. Open your terminal and run:
+
+```bash
+pip install ria-gui
+```
+Once installed, simply type the following command to launch the software:
+```bash
+ria
+```
+
+
 ### Option 1: Running from Source (Recommended for Developers/Reviewers)
 
 1. **Clone the repository:**
