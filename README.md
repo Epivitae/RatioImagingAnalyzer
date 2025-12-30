@@ -21,9 +21,6 @@
 
 ---
 
-**Meet RIA (or as we affectionately call her, "Li Ya / 莉丫").**
-
-... (接你原来的介绍文字)
 
 **Meet RIA (or as we affectionately call her, "Li Ya / 莉丫").**
 
