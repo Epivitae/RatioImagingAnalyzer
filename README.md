@@ -1,6 +1,7 @@
 # Ratio Imaging Analyzer (RIA / 莉丫)
 
-[![Status](https://joss.theoj.org/papers/please-replace-with-your-id/status.svg)](https://joss.theoj.org/papers/please-replace-with-your-id)
+[![Status](https://joss.theoj.org/papers/please-replace-with-your-id/status.svg)](https://joss.theoj.org/papers/@epivitae)
+[![JOSS Reviews](https://joss.theoj.org/badges/reviewed_by/@epivitae)](https://joss.theoj.org/papers/reviewed_by/@epivitae)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Run Tests](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml/badge.svg)](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml)
