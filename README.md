@@ -4,6 +4,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Run Tests](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml/badge.svg)](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml)
+[![DOI](https://zenodo.org/badge/1123365264.svg)](https://doi.org/10.5281/zenodo.18091693)
+
 
 **Meet RIA (or as we affectionately call her, "Li Ya / 莉丫").**
 
