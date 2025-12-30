@@ -4,7 +4,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Run Tests](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml/badge.svg)](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml)
-
 ![LOC](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Epivitae/65b61a32eaccf5de9624892da2ddd0d8/raw/gistfile1.txt)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18091693-orange)](https://doi.org/10.5281/zenodo.18091693)
 
