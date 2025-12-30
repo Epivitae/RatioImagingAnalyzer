@@ -47,7 +47,7 @@ jobs:
           auth: ${{ secrets.GIST_SECRET }}
           gistID: 65b61a32eaccf5de9624892da2ddd0d8
           filename: gistfile1.txt      
-          label: Code Volume       
+          label: LOC       
           message: ${{ env.LINES }}
           color: ${{ env.COLOR }}
           namedLogo: visualstudiocode 
