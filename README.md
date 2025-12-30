@@ -6,7 +6,7 @@
 [![Run Tests](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml/badge.svg)](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml)
 ![LOC](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Epivitae/65b61a32eaccf5de9624892da2ddd0d8/raw/gistfile1.txt)
 
-[![DOI](https://img.shields.io/zenodo/doi/10.5281/zenodo.18091693)](https://doi.org/10.5281/zenodo.18091693)
+
 [![DOI](https://zenodo.org/badge/1123365264.svg?t=1)](https://doi.org/10.5281/zenodo.18091693)
 
 
