@@ -4,6 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Run Tests](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml/badge.svg)](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml)
+
 ![LOC](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Epivitae/65b61a32eaccf5de9624892da2ddd0d8/raw/gistfile1.txt)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18091693-orange)](https://doi.org/10.5281/zenodo.18091693)
 
@@ -118,8 +119,8 @@ This software relies on the following open-source libraries and methods:
 * **Fiji (Inspiration)**: Schindelin, J., et al. (2012). Fiji: an open-source platform for biological-image analysis. *Nature Methods*, 9(7), 676–682.
 
 ## Citation
-Welcome to use RIA, please cite:<b>
-Wang, K. (2025). Ratio Imaging Analyzer (RIA): A Lightweight, Standalone Python Tool for Portable Ratiometric Fluorescence Analysis (v1.7.9.1). Zenodo. https://doi.org/10.5281/zenodo.18091694<b>
+Welcome to use RIA, please cite:<br>
+Wang, K. (2025). Ratio Imaging Analyzer (RIA): A Lightweight, Standalone Python Tool for Portable Ratiometric Fluorescence Analysis (v1.7.9.1). Zenodo.<br>
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18091693-blue)](https://doi.org/10.5281/zenodo.18091693)
 
 
