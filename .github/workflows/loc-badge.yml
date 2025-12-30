@@ -1,13 +1,13 @@
-name: 炫耀代码行数 (Update LOC Badge)
+name: Update LOC Badge
 
 on:
-  # 每次推送到主分支时运行
+
   push:
     branches: ["main", "master"]
-  # 每天早上8点自动跑一次（防止你很久没提交，徽章挂掉）
+
   schedule:
     - cron: '0 0 * * *'
-  # 允许手动触发
+
   workflow_dispatch:
 
 jobs:
@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 1. 下载并运行 cloc (统计代码行数的工具)
+
       - name: Install and Run cloc
         id: loc
         run: |
@@ -40,14 +40,14 @@ jobs:
             echo "COLOR=red" >> $GITHUB_ENV
           fi
 
-      # 3. 更新 Gist 徽章
+
       - name: Update Dynamic Badge
         uses: schneegans/dynamic-badges-action@v1.7.0
         with:
           auth: ${{ secrets.GIST_SECRET }}
           gistID: 65b61a32eaccf5de9624892da2ddd0d8
-          filename: gistfile1.txt      # Gist 里的文件名
-          label: Code Volume       # 徽章左边的文字，随便改，比如 "Power Level"
+          filename: gistfile1.txt      
+          label: Code Volume       
           message: ${{ env.LINES }}
           color: ${{ env.COLOR }}
-          namedLogo: visualstudiocode # 可以加个 Logo，看起来更专业
+          namedLogo: visualstudiocode 
