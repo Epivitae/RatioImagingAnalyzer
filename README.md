@@ -4,6 +4,7 @@
 [![Tests](https://img.shields.io/github/actions/workflow/status/Epivitae/RatioImagingAnalyzer/test.yml?branch=main&label=tests&style=flat-square&color=brightgreen)](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml)
 [![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/github/license/Epivitae/RatioImagingAnalyzer?style=flat-square&color=yellow)](LICENSE)
+[![Open Source](https://img.shields.io/badge/Open_Source-Yes-2ea44f?logo=open-source-initiative&logoColor=white&style=flat-square)](https://opensource.org/)
 ![Repo Size](https://img.shields.io/github/repo-size/Epivitae/RatioImagingAnalyzer?style=flat-square&color=ff69b4)
 ![LOC](https://img.shields.io/endpoint?style=flat-square&color=blueviolet&url=https://gist.githubusercontent.com/Epivitae/65b61a32eaccf5de9624892da2ddd0d8/raw/gistfile1.txt)
 ![Visitors](https://visitor-badge.laobi.icu/badge?page_id=Epivitae.RatioImagingAnalyzer)
