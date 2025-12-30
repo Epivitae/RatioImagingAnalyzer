@@ -1,7 +1,5 @@
-# Ratio Imaging Analyzer (RIA / 莉丫)
-
 <div align="center">
-  <img src="assets/WK.png" width="120" alt="Logo">
+  <img src="assets/app_ico.png" width="120" alt="Logo">
 
   <h1>Ratio Imaging Analyzer (RIA / 莉丫)</h1>
 
