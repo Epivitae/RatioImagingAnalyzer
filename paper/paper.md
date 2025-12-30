@@ -27,7 +27,7 @@ Ratiometric fluorescence imaging stands as a cornerstone technique in modern qua
 
 **Ratio Imaging Analyzer (RIA)** is a lightweight, open-source desktop application designed to streamline the processing of such ratiometric imaging data. Unlike complex image processing libraries that require scripting skills, RIA bridges the gap between raw data and biological insight through a user-friendly Graphical User Interface (GUI). It empowers researchers to perform motion correction, dynamic background subtraction, interactive thresholding, and real-time Region of Interest (ROI) analysis on standard personal computers, facilitating rapid hypothesis testing and data exploration.
 
-![The main user interface of RIA. The left panel provides intuitive controls for calculation parameters, while the central canvas displays the processed pseudocolor ratiometric image.](images/figure1.png){width=60%}
+![The main user interface of RIA. The layout consists of three main sections: the left panel for data loading, image registration, and parameter calibration; the central canvas showing the generated pseudocolor ratiometric image with a colorbar; and the bottom dashboard for time-lapse playback, ROI management, and data export.](images/figure1.png){width=60%}
 
 # Statement of Need
 
