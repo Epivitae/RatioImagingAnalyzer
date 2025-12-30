@@ -20,7 +20,8 @@
 </div>
 
 ---
-[![status](https://joss.theoj.org/papers/568244665150f4d9209d9140bc1f75b2/status.svg)](https://joss.theoj.org/papers/568244665150f4d9209d9140bc1f75b2)
+
+
 **Meet RIA (or as we affectionately call her, "Li Ya / 莉丫").**
 
 RIA is an open-source tool built to solve a simple but annoying problem: **Ratiometric analysis shouldn't be stuck on the microscope computer.**
