@@ -6,6 +6,7 @@
 [![Run Tests](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml/badge.svg)](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml)
 [![DOI](https://zenodo.org/badge/1123365264.svg)](https://doi.org/10.5281/zenodo.18091693)
 ![Code Volume](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Epivitae/gist:65b61a32eaccf5de9624892da2ddd0d8/raw/gistfile1.txt)
+![Lines of Code](https://tokei.rs/b1/github/Epivitae/RatioImagingAnalyzer)
 
 
 **Meet RIA (or as we affectionately call her, "Li Ya / 莉丫").**
