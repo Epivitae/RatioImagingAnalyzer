@@ -1,14 +1,31 @@
 # Ratio Imaging Analyzer (RIA / 莉丫)
 
-[![Status](https://joss.theoj.org/papers/please-replace-with-your-id/status.svg)](https://joss.theoj.org/papers/@epivitae)
-[![Tests](https://img.shields.io/github/actions/workflow/status/Epivitae/RatioImagingAnalyzer/test.yml?branch=main&label=tests&color=brightgreen)](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml)
-[![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/github/license/Epivitae/RatioImagingAnalyzer?color=yellow)](LICENSE)
-[![Open Source](https://img.shields.io/badge/Open_Source-Yes-2ea44f?logo=open-source-initiative&logoColor=white)](https://opensource.org/)
-![Repo Size](https://img.shields.io/github/repo-size/Epivitae/RatioImagingAnalyzer?color=ff69b4)
-![LOC](https://img.shields.io/endpoint?color=blueviolet&url=https://gist.githubusercontent.com/Epivitae/65b61a32eaccf5de9624892da2ddd0d8/raw/gistfile1.txt)
-![Visitors](https://visitor-badge.laobi.icu/badge?page_id=Epivitae.RatioImagingAnalyzer)
-[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18091693-0099CC)](https://doi.org/10.5281/zenodo.18091693)
+<div align="center">
+  <img src="assets/WK.png" width="120" alt="Logo">
+
+  <h1>Ratio Imaging Analyzer (RIA / 莉丫)</h1>
+
+  <p>
+    <a href="https://joss.theoj.org/papers/@epivitae"><img src="https://joss.theoj.org/papers/please-replace-with-your-id/status.svg" alt="Status"></a>
+    <a href="https://doi.org/10.5281/zenodo.18091693"><img src="https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18091693-0099CC" alt="DOI"></a>
+    <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.8%2B-3776AB?logo=python&logoColor=white" alt="Python"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/Epivitae/RatioImagingAnalyzer?color=yellow" alt="License"></a>
+  </p>
+
+  <p>
+    <a href="https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/Epivitae/RatioImagingAnalyzer/test.yml?branch=main&label=tests&color=brightgreen" alt="Tests"></a>
+    <a href="https://opensource.org/"><img src="https://img.shields.io/badge/Open_Source-Yes-2ea44f?logo=open-source-initiative&logoColor=white" alt="Open Source"></a>
+    <img src="https://img.shields.io/github/repo-size/Epivitae/RatioImagingAnalyzer?color=ff69b4" alt="Size">
+    <img src="https://img.shields.io/endpoint?color=blueviolet&url=https://gist.githubusercontent.com/Epivitae/65b61a32eaccf5de9624892da2ddd0d8/raw/gistfile1.txt" alt="LOC">
+    <img src="https://visitor-badge.laobi.icu/badge?page_id=Epivitae.RatioImagingAnalyzer" alt="Visitors">
+  </p>
+</div>
+
+---
+
+**Meet RIA (or as we affectionately call her, "Li Ya / 莉丫").**
+
+... (接你原来的介绍文字)
 
 **Meet RIA (or as we affectionately call her, "Li Ya / 莉丫").**
 
