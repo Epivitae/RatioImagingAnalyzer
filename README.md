@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/Epivitae/RatioImagingAnalyzer/main/assets/app_ico.png" width="120" alt="Logo">
+  <img src="/src/ria_gui/assets/app_ico.png" width="120" alt="Logo">
 
   <h1>Ratio Imaging Analyzer (RIA / 莉丫)</h1>
 
