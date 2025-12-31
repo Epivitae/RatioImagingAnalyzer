@@ -11,19 +11,18 @@ import datetime
 import threading
 import requests
 import webbrowser
-#from PIL import Image, ImageTk
 
 # --- Import Components ---
 try:
     from .constants import LANG_MAP
     from .components import ToggledFrame
-    from .io_utils import read_and_split_dual_channel, read_separate_files
+    from .io_utils import read_and_split_multichannel, read_separate_files, read_and_split_dual_channel
     from .gui_components import PlotManager, RoiManager 
 except ImportError:
     try:
         from constants import LANG_MAP
         from components import ToggledFrame
-        from io_utils import read_and_split_dual_channel, read_separate_files
+        from io_utils import read_and_split_multichannel, read_separate_files, read_and_split_dual_channel
         from gui_components import PlotManager, RoiManager
     except ImportError as e:
         print(f"Import Error: {e}. Ensure all modules exist.")
@@ -83,11 +82,17 @@ class RatioAnalyzerApp:
         self.plot_mgr = None 
         self.roi_mgr = RoiManager(self)
 
-        # Data & Flags
-        self.data1 = None; self.data2 = None
-        self.data1_raw = None; self.data2_raw = None 
+        # Data Objects
+        self.data1 = None      # Numerator (or Ch1)
+        self.data2 = None      # Denominator (or Ch2)
+        self.data_aux = []     # List of extra channels (Ch3, Ch4...)
+        
+        self.data1_raw = None
+        self.data2_raw = None 
 
-        self.cached_bg1 = 0; self.cached_bg2 = 0
+        self.cached_bg1 = 0
+        self.cached_bg2 = 0
+        self.cached_bg_aux = [] # Backgrounds for aux channels
         
         # Paths
         self.c1_path = None; self.c2_path = None
@@ -102,12 +107,7 @@ class RatioAnalyzerApp:
         
         self.root.after(100, self.load_graphics_engine)
 
-    # --- [New] Thread Safe Helper ---
     def thread_safe_config(self, widget, **kwargs):
-        """
-        线程安全地更新组件属性。
-        使用 root.after 将更新操作调度回主线程。
-        """
         try:
             self.root.after(0, lambda: widget.config(**kwargs))
         except Exception as e:
@@ -130,6 +130,7 @@ class RatioAnalyzerApp:
         style.configure("TRadiobutton", font=self.f_normal)
         style.configure("TEntry", font=self.f_normal, padding=2)
         style.configure("TCombobox", font=self.f_normal, padding=2)
+        style.configure("TSpinbox", font=self.f_normal, padding=2)
         
         style.configure("Card.TFrame", background=CARD_COLOR, relief="flat")
         style.configure("Card.TLabelframe", background=CARD_COLOR, relief="solid", borderwidth=1)
@@ -146,9 +147,7 @@ class RatioAnalyzerApp:
         style.configure("Starred.TButton", font=self.f_normal, foreground="#F5C518")
         style.configure("Compact.TButton", font=self.f_normal, padding=5, width=3) 
         style.configure("Gray.TButton", font=self.f_normal, background="#E0E0E0", foreground="#555555")
-        
         style.configure("Success.TButton", font=self.f_bold, foreground="#28a745") 
-
         style.configure("Toolbutton", background=CARD_COLOR, relief="flat", borderwidth=0, padding=4)
         style.map("Toolbutton", background=[("selected", "#E8F0FE")], relief=[("selected", "sunken")])
         
@@ -160,11 +159,8 @@ class RatioAnalyzerApp:
         else:
             curr_dir = os.path.dirname(os.path.abspath(__file__))
             path = os.path.join(curr_dir, "assets", filename)
-    
-    # --- 调试代码 ---
         if not os.path.exists(path):
             print(f"DEBUG: Resource not found at {path}")
-    # ----------------
         return path
 
     def t(self, key):
@@ -220,7 +216,7 @@ class RatioAnalyzerApp:
         self.frame_left.pack(fill="both", expand=True)
 
         self.setup_file_group()      # 1. File Loading
-        self.setup_preprocess_group()# 2. Image Registration (Optional)
+        self.setup_preprocess_group()# 2. Image Registration
         self.setup_calc_group()      # 3. Calibration
         self.setup_view_group()      # 4. Display Settings
         self.setup_brand_logo()
@@ -247,6 +243,9 @@ class RatioAnalyzerApp:
                 
             self.roi_mgr.connect(self.plot_mgr.ax)
             
+            logo_path = self.get_asset_path("app_ico.png")
+            self.plot_mgr.show_logo(logo_path)
+            
         except Exception as e:
             print(f"Graphics Engine Init Error: {e}")
 
@@ -262,41 +261,211 @@ class RatioAnalyzerApp:
         self.ui_elements["tab_sep"] = lambda text: self.nb_import.tab(0, text=text)
         self.create_compact_file_row(self.tab_sep, "btn_c1", self.select_c1, "lbl_c1_path")
         self.create_compact_file_row(self.tab_sep, "btn_c2", self.select_c2, "lbl_c2_path")
+        
+        # [Modified] Tab Dual Layout for Multichannel
         self.tab_dual = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
-        self.nb_import.add(self.tab_dual, text=" Single Dual-Ch File ")
+        self.nb_import.add(self.tab_dual, text=" Single File ")
         self.ui_elements["tab_dual"] = lambda text: self.nb_import.tab(1, text=text)
+        
         self.create_compact_file_row(self.tab_dual, "btn_dual", self.select_dual, "lbl_dual_path")
-        self.chk_inter = ttk.Checkbutton(self.tab_dual, variable=self.is_interleaved_var, style="Toggle.TButton")
-        self.chk_inter.pack(fill="x", pady=(2, 0)) 
+        
+        # Mixed Stacks & Channel Count Row
+        f_inter = ttk.Frame(self.tab_dual, style="White.TFrame")
+        f_inter.pack(fill="x", pady=(2, 0))
+        
+        self.chk_inter = ttk.Checkbutton(f_inter, variable=self.is_interleaved_var, style="Toggle.TButton")
+        self.chk_inter.pack(side="left")
         self.ui_elements["chk_interleaved"] = self.chk_inter
-        self.btn_load = ttk.Button(self.grp_file, command=self.load_data, state="disabled")
-        self.btn_load.pack(fill="x", pady=(10, 0))
+        
+        # Channel Count Spinbox
+        ttk.Label(f_inter, text="Ch Count:", style="White.TLabel").pack(side="left", padx=(10, 2))
+        self.var_n_channels = tk.IntVar(value=2)
+        # Using simple validation to ensure >=2
+        self.sp_channels = ttk.Spinbox(f_inter, from_=2, to=20, textvariable=self.var_n_channels, width=3)
+        self.sp_channels.pack(side="left")
+        
+        # Action Buttons
+        f_actions = ttk.Frame(self.grp_file, style="Card.TFrame")
+        f_actions.pack(fill="x", pady=(10, 0))
+        
+        self.btn_load = ttk.Button(f_actions, command=self.load_data, state="disabled")
+        self.btn_load.pack(side="left", fill="x", expand=True, padx=(0, 2))
         self.ui_elements["btn_load"] = self.btn_load
 
+        self.btn_clear_data = ttk.Button(f_actions, text="🗑", width=8, command=self.clear_all_data, style="Gray.TButton")
+        self.btn_clear_data.pack(side="right", fill="y")
+
+    # [New] Dialog to assign channels if > 2 detected
+    def ask_channel_roles(self, n_channels):
+        dialog = Toplevel(self.root)
+        dialog.title("Assign Channels")
+        dialog.geometry("320x300")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Center the dialog
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 160
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 150
+        dialog.geometry(f"+{x}+{y}")
+        
+        ttk.Label(dialog, text=f"Detected {n_channels} Channels!", font=("Segoe UI", 11, "bold")).pack(pady=10)
+        ttk.Label(dialog, text="Please select the pair for Ratio calculation:").pack()
+        
+        f_form = ttk.Frame(dialog, padding=20)
+        f_form.pack(fill="x")
+        
+        opts = [f"Channel {i+1}" for i in range(n_channels)]
+        
+        ttk.Label(f_form, text="Numerator (Ch1):").grid(row=0, column=0, pady=5, sticky="e")
+        cb_num = ttk.Combobox(f_form, values=opts, state="readonly", width=12)
+        cb_num.current(0)
+        cb_num.grid(row=0, column=1, pady=5, padx=5)
+        
+        ttk.Label(f_form, text="Denominator (Ch2):").grid(row=1, column=0, pady=5, sticky="e")
+        cb_den = ttk.Combobox(f_form, values=opts, state="readonly", width=12)
+        cb_den.current(1) 
+        cb_den.grid(row=1, column=1, pady=5, padx=5)
+        
+        ttk.Label(dialog, text="(Remaining channels will be loaded as Aux)", foreground="gray", font=("Segoe UI", 9)).pack()
+        
+        selection = {"num": 0, "den": 1}
+        
+        def confirm():
+            n = cb_num.current()
+            d = cb_den.current()
+            if n == d:
+                messagebox.showwarning("Warning", "Numerator and Denominator cannot be the same channel!")
+                return
+            selection["num"] = n
+            selection["den"] = d
+            dialog.destroy()
+            
+        ttk.Button(dialog, text="Confirm", command=confirm, style="Success.TButton").pack(pady=15, fill="x", padx=40)
+        
+        self.root.wait_window(dialog)
+        return selection
+
+    def load_data(self):
+        try:
+            self.root.config(cursor="watch")
+            self.root.update()
+            
+            # Clear previous Aux data
+            self.data_aux = []
+            
+            current_tab = self.nb_import.index("current")
+            channels = []
+            
+            if current_tab == 0:
+                # Separate files (assume 2 channels)
+                d1, d2 = read_separate_files(self.c1_path, self.c2_path)
+                channels = [d1, d2]
+            else:
+                # Single file (Multichannel supported)
+                n_ch = self.var_n_channels.get() if self.is_interleaved_var.get() else 2
+                channels = read_and_split_multichannel(self.dual_path, self.is_interleaved_var.get(), n_ch)
+
+            # Assign Roles
+            if len(channels) == 2:
+                self.data1 = channels[0]
+                self.data2 = channels[1]
+                self.data_aux = []
+            elif len(channels) > 2:
+                self.root.config(cursor="") # Restore cursor for interaction
+                roles = self.ask_channel_roles(len(channels))
+                
+                idx_num = roles["num"]
+                idx_den = roles["den"]
+                
+                self.data1 = channels[idx_num]
+                self.data2 = channels[idx_den]
+                
+                # Store others in data_aux
+                self.data_aux = []
+                for i, d in enumerate(channels):
+                    if i != idx_num and i != idx_den:
+                        self.data_aux.append(d)
+            else:
+                raise ValueError(f"Channel count < 2 (Got {len(channels)})")
+
+            self.data1_raw = None
+            self.data2_raw = None
+            self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
+            self.btn_align.config(state="normal", text=self.t("btn_align"), style="TButton")
+
+            self.recalc_background()
+            self.frame_scale.configure(to=self.data1.shape[0]-1)
+            self.var_frame.set(0); self.frame_scale.set(0)
+            h, w = self.data1.shape[1], self.data1.shape[2]
+            self.plot_mgr.init_image((h, w), cmap="coolwarm")
+            self.roi_mgr.connect(self.plot_mgr.ax)
+            self.update_plot()
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+        finally:
+            self.root.config(cursor="")
+
+    def clear_all_data(self):
+        self.is_playing = False
+        self.btn_play.config(text="▶")
+
+        self.data1 = None
+        self.data2 = None
+        self.data_aux = [] # Clear aux
+        self.data1_raw = None
+        self.data2_raw = None
+        self.cached_bg1 = 0
+        self.cached_bg2 = 0
+        self.cached_bg_aux = []
+        
+        self.c1_path = None
+        self.c2_path = None
+        self.dual_path = None
+        
+        self.lbl_c1_path.config(text=self.t("lbl_no_file"))
+        self.lbl_c2_path.config(text=self.t("lbl_no_file"))
+        self.lbl_dual_path.config(text=self.t("lbl_no_file"))
+        
+        self.btn_load.config(state="disabled")
+        self.btn_align.config(state="disabled", text=self.t("btn_align"), style="TButton")
+        self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
+        
+        self.roi_mgr.clear_all()
+        
+        if self.plot_mgr:
+            logo_path = self.get_asset_path("app_ico.png")
+            self.plot_mgr.show_logo(logo_path)
+        
+        self.var_frame.set(0)
+        self.frame_scale.configure(to=1, value=0)
+        self.lbl_frame.config(text="0/0")
+        self.pb_align.pack_forget()
+
+    # ... setup_preprocess_group, setup_calc_group ... (Same as before)
     def setup_preprocess_group(self):
         self.grp_pre = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
         self.grp_pre.pack(fill="x", pady=(0, 10))
         self.ui_elements["grp_pre"] = self.grp_pre
-        
-        row = ttk.Frame(self.grp_pre, style="White.TFrame")
-        row.pack(fill="x")
-        
-        # [核心修复] 为左侧按钮指定宽度 (width=20)，并取消 expand，确保右侧按钮空间
+        row = ttk.Frame(self.grp_pre, style="White.TFrame"); row.pack(fill="x")
         self.btn_align = ttk.Button(row, command=self.run_alignment_thread, state="disabled", width=22)
         self.btn_align.pack(side="left", fill="x", padx=(0, 2))
         self.ui_elements["btn_align"] = self.btn_align
-        
-        # 即使文字较长，现在右侧按钮也有足够的剩余空间显示了
         self.btn_undo_align = ttk.Button(row, command=self.undo_alignment, state="disabled", width=8, style="Gray.TButton")
         self.btn_undo_align.pack(side="right", fill="x", expand=True)
         self.ui_elements["btn_undo_align"] = self.btn_undo_align
-        
         self.pb_align = ttk.Progressbar(self.grp_pre, orient="horizontal", mode="determinate")
 
     def setup_calc_group(self):
         self.grp_calc = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
         self.grp_calc.pack(fill="x", pady=(0, 10))
         self.ui_elements["grp_calc"] = self.grp_calc
+        f_mode = ttk.Frame(self.grp_calc, style="White.TFrame"); f_mode.pack(fill="x", pady=(0, 5))
+        self.lbl_mode = ttk.Label(f_mode, style="White.TLabel"); self.lbl_mode.pack(side="left")
+        self.ui_elements["lbl_ratio_mode"] = self.lbl_mode
+        self.ratio_mode_var = tk.StringVar(value="c1_c2") 
+        self.combo_mode = ttk.Combobox(f_mode, state="readonly", width=18)
+        self.combo_mode.pack(side="right", fill="x", expand=True, padx=(5, 0))
+        self.combo_mode.bind("<<ComboboxSelected>>", self.on_mode_change)
         self.var_int_thresh = tk.DoubleVar(value=0.0); self.var_ratio_thresh = tk.DoubleVar(value=0.0)
         self.var_smooth = tk.DoubleVar(value=0.0); self.var_bg = tk.DoubleVar(value=5.0)
         self.create_slider(self.grp_calc, "lbl_int_thr", 0, 500, 1, self.var_int_thresh)
@@ -341,24 +510,15 @@ class RatioAnalyzerApp:
         self.fr_brand.pack(side="bottom", fill="x", pady=(30, 10))
         inner_box = ttk.Frame(self.fr_brand, style="White.TFrame")
         inner_box.pack(anchor="center")
-        
         try:
-            # 直接加载 PNG 文件，不再使用 Pillow
             icon_path = self.get_asset_path("app_ico.png") 
             if os.path.exists(icon_path):
-                # 使用 Tkinter 原生 PhotoImage
                 self.brand_icon_img = tk.PhotoImage(file=icon_path)
-                
-                # 如果 PNG 尺寸太大，可以使用 subsample 进行简单等比缩小
-                # 例如原始是 256x256，设置 (4, 4) 会变成 64x64
                 if self.brand_icon_img.width() > 100:
                     scale_factor = self.brand_icon_img.width() // 80
                     self.brand_icon_img = self.brand_icon_img.subsample(scale_factor, scale_factor)
-                
                 ttk.Label(inner_box, image=self.brand_icon_img, style="White.TLabel").pack(side="top", pady=(0, 5)) 
-        except Exception as e:
-            print(f"Brand icon load error: {e}")
-            
+        except Exception as e: print(f"Brand icon load error: {e}")
         ttk.Label(inner_box, text="RIA 莉丫", font=("Microsoft YaHei UI", 12, "bold"), foreground="#0056b3", style="White.TLabel").pack(side="top")
         current_year = datetime.datetime.now().year
         ttk.Label(inner_box, text=f"© {current_year} Dr. Kui Wang | www.cns.ac.cn", font=("Segoe UI", 8), foreground="gray", style="White.TLabel").pack(side="top", pady=(2, 0))
@@ -366,132 +526,69 @@ class RatioAnalyzerApp:
     def create_bottom_panel(self, parent):
         bottom_area = ttk.Frame(parent, padding=(0, 10, 0, 0), style="White.TFrame")
         bottom_area.pack(fill="x", side="bottom")
-
         p_frame = ttk.LabelFrame(bottom_area, text="Player", style="Card.TLabelframe")
         p_frame.pack(fill="x", pady=(0,10))
-        row_bar = ttk.Frame(p_frame, style="White.TFrame")
-        row_bar.pack(fill="x", padx=5)
+        row_bar = ttk.Frame(p_frame, style="White.TFrame"); row_bar.pack(fill="x", padx=5)
         self.var_frame = tk.IntVar(value=0)
-        self.lbl_frame = ttk.Label(row_bar, text="0/0", width=8, style="White.TLabel")
-        self.lbl_frame.pack(side="left")
-        self.frame_scale = ttk.Scale(row_bar, from_=0, to=1, command=self.on_frame_slide)
-        self.frame_scale.pack(side="left", fill="x", expand=True)
-        row_ctl = ttk.Frame(p_frame, style="White.TFrame")
-        row_ctl.pack(fill="x", padx=5, pady=2)
-        self.btn_play = ttk.Button(row_ctl, text="▶", width=5, command=self.toggle_play)
-        self.btn_play.pack(side="left")
-        self.lbl_spd = ttk.Label(row_ctl, text="Speed:", style="White.TLabel")
-        self.lbl_spd.pack(side="left", padx=(10,2))
+        self.lbl_frame = ttk.Label(row_bar, text="0/0", width=8, style="White.TLabel"); self.lbl_frame.pack(side="left")
+        self.frame_scale = ttk.Scale(row_bar, from_=0, to=1, command=self.on_frame_slide); self.frame_scale.pack(side="left", fill="x", expand=True)
+        row_ctl = ttk.Frame(p_frame, style="White.TFrame"); row_ctl.pack(fill="x", padx=5, pady=2)
+        self.btn_play = ttk.Button(row_ctl, text="▶", width=5, command=self.toggle_play); self.btn_play.pack(side="left")
+        self.lbl_spd = ttk.Label(row_ctl, text="Speed:", style="White.TLabel"); self.lbl_spd.pack(side="left", padx=(10,2))
         self.ui_elements["lbl_speed"] = self.lbl_spd
         self.fps_var = tk.StringVar(value="10 FPS")
         ttk.OptionMenu(row_ctl, self.fps_var, "10 FPS", "5 FPS", "10 FPS", "20 FPS", "Max", command=self.change_fps).pack(side="left")
-        
-        self.tb_frame_placeholder = ttk.Frame(row_ctl, style="White.TFrame")
-        self.tb_frame_placeholder.pack(side="right")
-
-        grid_area = ttk.Frame(bottom_area, style="White.TFrame")
-        grid_area.pack(fill="x", expand=True)
-        grid_area.columnconfigure(0, weight=2)
-        grid_area.columnconfigure(1, weight=1)
-        grid_area.columnconfigure(2, weight=1)
-
-        fr_roi = ttk.LabelFrame(grid_area, padding=5, style="Card.TLabelframe")
-        fr_roi.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        self.tb_frame_placeholder = ttk.Frame(row_ctl, style="White.TFrame"); self.tb_frame_placeholder.pack(side="right")
+        grid_area = ttk.Frame(bottom_area, style="White.TFrame"); grid_area.pack(fill="x", expand=True)
+        grid_area.columnconfigure(0, weight=2); grid_area.columnconfigure(1, weight=1); grid_area.columnconfigure(2, weight=1)
+        fr_roi = ttk.LabelFrame(grid_area, padding=5, style="Card.TLabelframe"); fr_roi.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
         self.ui_elements["lbl_roi_tools"] = fr_roi
-        row_edit = ttk.Frame(fr_roi, style="White.TFrame")
-        row_edit.pack(fill="x", pady=2)
+        row_edit = ttk.Frame(fr_roi, style="White.TFrame"); row_edit.pack(fill="x", pady=2)
         self.shape_var = tk.StringVar(value="rect")
-        def set_shape(mode):
-            self.shape_var.set(mode)
-            self.roi_mgr.set_mode(mode)
-        f_shapes = ttk.Frame(row_edit, style="White.TFrame")
-        f_shapes.pack(side="left", fill="y")
-        self.lbl_shape = ttk.Label(f_shapes, text="Shape:", style="White.TLabel")
-        self.lbl_shape.pack(side="left", padx=(0, 2))
+        def set_shape(mode): self.shape_var.set(mode); self.roi_mgr.set_mode(mode)
+        f_shapes = ttk.Frame(row_edit, style="White.TFrame"); f_shapes.pack(side="left", fill="y")
+        self.lbl_shape = ttk.Label(f_shapes, text="Shape:", style="White.TLabel"); self.lbl_shape.pack(side="left", padx=(0, 2))
         self.ui_elements["lbl_shape"] = self.lbl_shape
         ttk.Radiobutton(f_shapes, text="□", variable=self.shape_var, value="rect", command=lambda: set_shape("rect"), style="Toolbutton").pack(side="left", padx=1)
         ttk.Radiobutton(f_shapes, text="○", variable=self.shape_var, value="circle", command=lambda: set_shape("circle"), style="Toolbutton").pack(side="left", padx=1)
         ttk.Radiobutton(f_shapes, text="⬠", variable=self.shape_var, value="polygon", command=lambda: set_shape("polygon"), style="Toolbutton").pack(side="left", padx=2)
-        self.btn_draw = ttk.Button(row_edit, text="New ROI", command=self.roi_mgr.start_drawing, style="Toggle.TButton")
-        self.btn_draw.pack(side="left", padx=(15, 2), fill="y", expand=True)
+        self.btn_draw = ttk.Button(row_edit, text="New ROI", command=self.roi_mgr.start_drawing, style="Toggle.TButton"); self.btn_draw.pack(side="left", padx=(15, 2), fill="y", expand=True)
         self.ui_elements["btn_draw"] = self.btn_draw
-        self.btn_undo = ttk.Button(row_edit, text="↩️", command=self.roi_mgr.remove_last, width=3, style="Compact.TButton")
-        self.btn_undo.pack(side="left", padx=1, fill="y")
-        self.btn_clear = ttk.Button(row_edit, text="🗑️", command=self.roi_mgr.clear_all, width=3, style="Compact.TButton")
-        self.btn_clear.pack(side="left", padx=1, fill="y")
-        row_act = ttk.Frame(fr_roi, style="White.TFrame")
-        row_act.pack(fill="x", pady=4)
-        self.btn_plot = ttk.Button(row_act, text="📈 Plot Curve", command=self.plot_roi_curve)
-        self.btn_plot.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        self.btn_undo = ttk.Button(row_edit, text="↩️", command=self.roi_mgr.remove_last, width=3, style="Compact.TButton"); self.btn_undo.pack(side="left", padx=1, fill="y")
+        self.btn_clear = ttk.Button(row_edit, text="🗑️", command=self.roi_mgr.clear_all, width=3, style="Compact.TButton"); self.btn_clear.pack(side="left", padx=1, fill="y")
+        row_act = ttk.Frame(fr_roi, style="White.TFrame"); row_act.pack(fill="x", pady=4)
+        self.btn_plot = ttk.Button(row_act, text="📈 Plot Curve", command=self.plot_roi_curve); self.btn_plot.pack(side="left", fill="x", expand=True, padx=(0, 5))
         self.ui_elements["btn_plot"] = self.btn_plot
         self.live_plot_var = tk.BooleanVar(value=False)
-        self.chk_live = ttk.Checkbutton(row_act, variable=self.live_plot_var, text="Live Monitor", style="Toggle.TButton", command=self.plot_roi_curve)
-        self.chk_live.pack(side="right")
+        self.chk_live = ttk.Checkbutton(row_act, variable=self.live_plot_var, text="Live Monitor", style="Toggle.TButton", command=self.plot_roi_curve); self.chk_live.pack(side="right")
         self.ui_elements["chk_live"] = self.chk_live
-        row_param = ttk.Frame(fr_roi, style="White.TFrame")
-        row_param.pack(fill="x", pady=(4, 0))
-        row_param.columnconfigure(0, weight=1)
-        row_param.columnconfigure(1, weight=1)
-        row_param.columnconfigure(2, weight=1)
-        f_int = ttk.Frame(row_param, style="White.TFrame")
-        f_int.grid(row=0, column=0, sticky="w")
-        self.lbl_int = ttk.Label(f_int, text="Imaging Interval (s):", style="White.TLabel") 
-        self.lbl_int.pack(side="left")
+        row_param = ttk.Frame(fr_roi, style="White.TFrame"); row_param.pack(fill="x", pady=(4, 0))
+        row_param.columnconfigure(0, weight=1); row_param.columnconfigure(1, weight=1); row_param.columnconfigure(2, weight=1)
+        f_int = ttk.Frame(row_param, style="White.TFrame"); f_int.grid(row=0, column=0, sticky="w")
+        self.lbl_int = ttk.Label(f_int, text="Imaging Interval (s):", style="White.TLabel"); self.lbl_int.pack(side="left")
         self.ui_elements["lbl_interval"] = self.lbl_int
         self.var_interval = tk.DoubleVar(value=1.0)
         ttk.Entry(f_int, textvariable=self.var_interval, width=5).pack(side="left", padx=(2, 0))
-        f_unit = ttk.Frame(row_param, style="White.TFrame")
-        f_unit.grid(row=0, column=1) 
-        self.lbl_unit = ttk.Label(f_unit, text="Plotting Unit:", style="White.TLabel")
-        self.lbl_unit.pack(side="left")
+        f_unit = ttk.Frame(row_param, style="White.TFrame"); f_unit.grid(row=0, column=1) 
+        self.lbl_unit = ttk.Label(f_unit, text="Plotting Unit:", style="White.TLabel"); self.lbl_unit.pack(side="left")
         self.ui_elements["lbl_unit"] = self.lbl_unit
-        self.combo_unit = ttk.Combobox(f_unit, values=["s", "m", "h"], width=3, state="readonly")
-        self.combo_unit.set("s")
-        self.combo_unit.pack(side="left", padx=2)
+        self.combo_unit = ttk.Combobox(f_unit, values=["s", "m", "h"], width=3, state="readonly"); self.combo_unit.set("s"); self.combo_unit.pack(side="left", padx=2)
         self.norm_var = tk.BooleanVar(value=False)
-        self.chk_norm = ttk.Checkbutton(row_param, text="Normalization (ΔR/R₀)", variable=self.norm_var, style="Toggle.TButton", command=self.plot_roi_curve)
-        self.chk_norm.grid(row=0, column=2, sticky="e")
-
-        fr_exp = ttk.LabelFrame(grid_area, padding=5, style="Card.TLabelframe")
-        fr_exp.grid(row=0, column=1, sticky="nsew", padx=5)
+        self.chk_norm = ttk.Checkbutton(row_param, text="Normalization (ΔR/R₀)", variable=self.norm_var, style="Toggle.TButton", command=self.plot_roi_curve); self.chk_norm.grid(row=0, column=2, sticky="e")
+        fr_exp = ttk.LabelFrame(grid_area, padding=5, style="Card.TLabelframe"); fr_exp.grid(row=0, column=1, sticky="nsew", padx=5)
         self.ui_elements["lbl_export"] = fr_exp
-        self.btn_save_frame = ttk.Button(fr_exp, command=self.save_current_frame)
-        self.btn_save_frame.pack(fill="x", pady=2)
+        self.btn_save_frame = ttk.Button(fr_exp, command=self.save_current_frame); self.btn_save_frame.pack(fill="x", pady=2)
         self.ui_elements["btn_save_frame"] = self.btn_save_frame
-        self.btn_save_stack = ttk.Button(fr_exp, command=self.save_stack_thread)
-        self.btn_save_stack.pack(fill="x", pady=2)
+        self.btn_save_stack = ttk.Button(fr_exp, command=self.save_stack_thread); self.btn_save_stack.pack(fill="x", pady=2)
         self.ui_elements["btn_save_stack"] = self.btn_save_stack
-        self.btn_save_raw = ttk.Button(fr_exp, command=self.save_raw_thread, style="Gray.TButton")
-        self.btn_save_raw.pack(fill="x", pady=2)
+        self.btn_save_raw = ttk.Button(fr_exp, command=self.save_raw_thread, style="Gray.TButton"); self.btn_save_raw.pack(fill="x", pady=2)
         self.ui_elements["btn_save_raw"] = self.btn_save_raw
-
-        fr_set = ToggledFrame(grid_area, text="Settings", style="Card.TFrame")
-        fr_set.grid(row=0, column=2, sticky="new", padx=(5, 0))
+        fr_set = ToggledFrame(grid_area, text="Settings", style="Card.TFrame"); fr_set.grid(row=0, column=2, sticky="new", padx=(5, 0))
         self.ui_elements["lbl_settings"] = fr_set.lbl_title
-        self.btn_update = ttk.Button(fr_set.sub_frame, command=self.check_update_thread)
-        self.btn_update.pack(fill="x", pady=2)
+        self.btn_update = ttk.Button(fr_set.sub_frame, command=self.check_update_thread); self.btn_update.pack(fill="x", pady=2)
         self.ui_elements["btn_check_update"] = self.btn_update
-        self.btn_contact = ttk.Button(fr_set.sub_frame, command=lambda: webbrowser.open("https://www.cns.ac.cn"))
-        self.btn_contact.pack(fill="x", pady=2)
+        self.btn_contact = ttk.Button(fr_set.sub_frame, command=lambda: webbrowser.open("https://www.cns.ac.cn")); self.btn_contact.pack(fill="x", pady=2)
         self.ui_elements["btn_contact"] = self.btn_contact
-
-    def toggle_language(self):
-        self.current_lang = "en" if self.current_lang == "cn" else "cn"
-        self.update_language()
-
-    def update_language(self):
-        self.root.title(self.t("window_title").format(self.VERSION))
-        self.lbl_title.config(text=self.t("header_title"))
-        for key, widget in self.ui_elements.items():
-            try:
-                if callable(widget): 
-                    widget(self.t(key))
-                else:
-                    widget.config(text=self.t(key))
-            except: pass
-        if self.c1_path is None: self.lbl_c1_path.config(text=self.t("lbl_no_file"))
-        if self.c2_path is None: self.lbl_c2_path.config(text=self.t("lbl_no_file"))
-        if self.dual_path is None: self.lbl_dual_path.config(text=self.t("lbl_no_file"))
 
     def create_compact_file_row(self, parent, btn_key, cmd, lbl_attr):
         f = ttk.Frame(parent, style="White.TFrame"); f.pack(fill="x", pady=1)
@@ -539,6 +636,12 @@ class RatioAnalyzerApp:
             p = self.var_bg.get()
             self.cached_bg1 = calculate_background(self.data1, p)
             self.cached_bg2 = calculate_background(self.data2, p)
+            
+            # [Updated] Calculate background for aux channels
+            self.cached_bg_aux = []
+            if hasattr(self, 'data_aux'):
+                for aux in self.data_aux:
+                    self.cached_bg_aux.append(calculate_background(aux, p))
         except: pass
 
     def select_c1(self):
@@ -562,35 +665,6 @@ class RatioAnalyzerApp:
         else:
             if self.dual_path: self.btn_load.config(state="normal")
             else: self.btn_load.config(state="disabled")
-
-    def load_data(self):
-        try:
-            self.root.config(cursor="watch")
-            self.root.update()
-            current_tab = self.nb_import.index("current")
-            d1 = None; d2 = None
-            if current_tab == 0:
-                d1, d2 = read_separate_files(self.c1_path, self.c2_path)
-            else:
-                d1, d2 = read_and_split_dual_channel(self.dual_path, self.is_interleaved_var.get())
-
-            self.data1, self.data2 = d1, d2
-            self.data1_raw = None
-            self.data2_raw = None
-            self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
-            self.btn_align.config(state="normal", text=self.t("btn_align"), style="TButton")
-
-            self.recalc_background()
-            self.frame_scale.configure(to=self.data1.shape[0]-1)
-            self.var_frame.set(0); self.frame_scale.set(0)
-            h, w = d1.shape[1], d1.shape[2]
-            self.plot_mgr.init_image((h, w), cmap="coolwarm")
-            self.roi_mgr.connect(self.plot_mgr.ax)
-            self.update_plot()
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-        finally:
-            self.root.config(cursor="")
 
     def run_alignment_thread(self):
         if self.data1 is None: return
@@ -647,10 +721,13 @@ class RatioAnalyzerApp:
             self.root.after(1000, restore_undo_btn)
 
     def get_processed_frame(self, frame_idx):
-        if self.data1 is None: return None
+        # [Updated] Use get_active_data to respect Ratio Mode
+        d_num, d_den, bg_num, bg_den = self.get_active_data()
+        
+        if d_num is None: return None
         return process_frame_ratio(
-            self.data1[frame_idx], self.data2[frame_idx],
-            self.cached_bg1, self.cached_bg2,
+            d_num[frame_idx], d_den[frame_idx],
+            bg_num, bg_den,
             self.var_int_thresh.get(), self.var_ratio_thresh.get(),
             int(self.var_smooth.get()), False 
         )
@@ -736,12 +813,13 @@ class RatioAnalyzerApp:
             ts = datetime.datetime.now().strftime("%H%M%S")
             path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Clean_Ratio_Stack_{ts}.tif")
             if not path: return
+            d_num, d_den, bg_num, bg_den = self.get_active_data()
             with tiff.TiffWriter(path, bigtiff=True) as tif:
-                for i in range(self.data1.shape[0]):
-                    if i%10==0: self.thread_safe_config(self.ui_elements["btn_save_raw"], text=f"⏳ {i}/{self.data1.shape[0]}")
+                for i in range(d_num.shape[0]):
+                    if i%10==0: self.thread_safe_config(self.ui_elements["btn_save_raw"], text=f"⏳ {i}/{d_num.shape[0]}")
                     ratio_frame = process_frame_ratio(
-                        self.data1[i], self.data2[i],
-                        self.cached_bg1, self.cached_bg2,
+                        d_num[i], d_den[i],
+                        bg_num, bg_den,
                         self.var_int_thresh.get(), self.var_ratio_thresh.get(),
                         smooth_size=0, log_scale=False
                     )

@@ -3,31 +3,27 @@
 LANG_MAP = {
     "window_title": {"cn": "比率成像分析器 ({})", "en": "Ratio Imaging Analyzer ({})"},
     "header_title": {"cn": "Ratio Imaging Analyzer (RIA)", "en": "Ratio Imaging Analyzer (RIA)"},
-    
-    # --- 1. File Loading ---
+
     "grp_file": {"cn": "1. 文件加载", "en": "1. File Loading"},
-    
-    # --- 2. Registration (原 Pre-processing) ---
-    # [修改] 序号改为 2，名称改为 Image Registration
+
     "grp_pre": {"cn": "2. 图像配准 (可选)", "en": "2. Image Registration (Optional)"},
     "btn_align": {"cn": "✨ 运行运动校正", "en": "✨ Run Motion Correction"},
-    # [新增] 完成状态的文本
+
     "btn_align_done": {"cn": "✔ 配准完成", "en": "✔ Reg. Complete"},
     "btn_undo_align": {"cn": "↩ 撤销", "en": "↩ Undo"},
-    # [新增] 撤销完成的文本
+
     "btn_undo_done": {"cn": "✔ 已撤销", "en": "✔ Undone"},
     
     "lbl_align_info": {"cn": "基于 Ch1 校正位移 (需 OpenCV)", "en": "Aligns stack based on Ch1."},
     "msg_aligning": {"cn": "正在进行 ECC 配准...", "en": "Running ECC Alignment..."},
-    # "msg_align_success": 删除此条，因为不再弹窗
+
     
     "grp_calc": {"cn": "3. 参数校准", "en": "3. Calibration"},
     
-    # --- 4. Display (原 View) ---
-    # [修改] 序号改为 4
+
     "grp_view": {"cn": "4. 显示设置", "en": "4. Display Settings"},
 
-    # --- 以下保持不变 ---
+
     "tab_sep": {"cn": " 分别导入 (两文件) ", "en": " Separate Files "},
     "tab_dual": {"cn": " 单文件双通道 ", "en": " Single Dual-Ch File "},
     
@@ -71,4 +67,7 @@ LANG_MAP = {
     "title_update": {"cn": "版本更新", "en": "Update Check"},
     "err_check": {"cn": "检查更新失败: ", "en": "Check failed: "},
     "lbl_shape": {"cn": "ROI 形状:", "en": "ROI Shape:"},
+    "lbl_ratio_mode": {"cn": "比率模式:", "en": "Ratio Mode:"},
+    "mode_c1_c2": {"cn": "Ch1 / Ch2 (默认)", "en": "Ch1 / Ch2 (Default)"},
+    "mode_c2_c1": {"cn": "Ch2 / Ch1 (反转)", "en": "Ch2 / Ch1 (Inverted)"},
 }

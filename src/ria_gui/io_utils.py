@@ -3,71 +3,79 @@ import tifffile as tiff
 import numpy as np
 import warnings
 
-def read_and_split_dual_channel(file_path, is_interleaved):
+def read_and_split_multichannel(file_path, is_interleaved, n_channels=2):
     """
-    读取单文件并根据设置拆分为双通道数据。
-    返回: (d1, d2)
-    
-    [优化] 移除 .astype(np.float32) 以节省 50% 内存。
-    保持原始数据类型(通常是 uint16)，只在计算时自动提升精度。
+    通用读取函数，支持任意通道数。
+    返回: List [ch0, ch1, ch2, ...]
     """
     try:
-        # 读取原始数据，不强制转换类型
+        # 读取原始数据，不强制转换类型以节省内存
         raw_data = tiff.imread(file_path)
     except Exception as e:
         raise ValueError(f"无法读取文件: {e}")
 
-    d1, d2 = None, None
+    channels = []
 
-    # 逻辑分支 1: 交错堆栈 (Frame 0=Ch1, Frame 1=Ch2...)
+    # 逻辑 1: 交错堆栈 (Interleaved) - 如: Ch1, Ch2, Ch3, Ch1...
     if is_interleaved:
         if raw_data.ndim != 3:
              raise ValueError(f"交错模式需要 3D 堆栈 (T, Y, X)，当前维度: {raw_data.shape}")
         
-        if raw_data.shape[0] % 2 != 0:
-            # 警告：奇数帧无法完美拆分，丢弃最后一帧
-            # 使用 view 切片，不占用额外内存
-            raw_data = raw_data[:-1]
-        
-        # 使用切片 (Slicing) 创建视图 (View)，几乎不占额外内存
-        d1 = raw_data[0::2]
-        d2 = raw_data[1::2]
-        
-    # 逻辑分支 2: Hyperstack (按维度拆分)
+        n_frames = raw_data.shape[0]
+        # 截断无法整除的多余帧
+        remainder = n_frames % n_channels
+        if remainder != 0:
+            raw_data = raw_data[:-remainder]
+            
+        # 使用切片分离通道，不产生额外内存拷贝
+        for c in range(n_channels):
+            # start=c, step=n_channels
+            channels.append(raw_data[c::n_channels])
+
+    # 逻辑 2: Hyperstack (4D) - 如: (T, C, Y, X)
     else:
         if raw_data.ndim == 4:
-            # 假设第二个维度是 Channel (T, C, Y, X)
-            if raw_data.shape[1] == 2:
-                d1 = raw_data[:, 0, :, :]
-                d2 = raw_data[:, 1, :, :]
-            # 假设第一个维度是 Channel (C, T, Y, X)
-            elif raw_data.shape[0] == 2:
-                d1 = raw_data[0, :, :, :]
-                d2 = raw_data[1, :, :, :]
+            # 情况 A: 标准顺序 (T, C, Y, X) -> shape[1] 是通道
+            if raw_data.shape[1] >= 2 and raw_data.shape[1] <= 10: 
+                for c in range(raw_data.shape[1]):
+                    channels.append(raw_data[:, c, :, :])
+            
+            # 情况 B: ImageJ 某些格式 (C, T, Y, X) -> shape[0] 是通道
+            # 这里的判断逻辑是：通常通道数比较少 (<10)，而时间帧数比较多
+            elif raw_data.shape[0] >= 2 and raw_data.shape[0] <= 10 and raw_data.shape[1] > 10:
+                 for c in range(raw_data.shape[0]):
+                     channels.append(raw_data[c, :, :, :])
             else:
-                raise ValueError(f"无法自动识别通道维度 (需为2)。当前形状: {raw_data.shape}")
+                raise ValueError(f"无法自动识别通道维度 (T,C,Y,X or C,T,Y,X)。当前形状: {raw_data.shape}")
+                    
         elif raw_data.ndim == 3:
-                raise ValueError("检测到 3D 数据。如果是时间序列，请勾选 '交错堆栈' (Interleaved)。")
+             raise ValueError("检测到 3D 数据。如果是多通道交错时间序列，请勾选 'Mixed Stacks' 并设置正确的通道数。")
         else:
             raise ValueError(f"不支持的维度: {raw_data.shape}")
 
-    # 简单检查数据一致性
-    if d1.shape != d2.shape:
-        # 极少情况可能发生，做个防守
-        min_len = min(len(d1), len(d2))
-        d1 = d1[:min_len]
-        d2 = d2[:min_len]
+    # 简单检查长度一致性 (通常切片后是一致的)
+    if not channels:
+        raise ValueError("未能提取到任何通道数据。")
+        
+    min_len = min(len(c) for c in channels)
+    channels = [c[:min_len] for c in channels]
 
-    return d1, d2
+    return channels
+
+def read_and_split_dual_channel(file_path, is_interleaved):
+    """兼容旧接口的 Wrapper，默认只读2通道"""
+    res = read_and_split_multichannel(file_path, is_interleaved, n_channels=2)
+    if len(res) < 2:
+        raise ValueError("文件通道数少于 2 个。")
+    return res[0], res[1]
 
 def read_separate_files(path1, path2):
     """读取两个独立文件"""
-    # [优化] 同样移除强制 float32 转换
     d1 = tiff.imread(path1)
     d2 = tiff.imread(path2)
     
     if d1.shape != d2.shape:
-        # 尝试自动修复帧数不匹配（取交集）
+        # 尝试自动修复帧数不匹配
         if d1.ndim == d2.ndim and d1.ndim == 3:
              min_frames = min(d1.shape[0], d2.shape[0])
              if min_frames > 0:
@@ -75,7 +83,7 @@ def read_separate_files(path1, path2):
                  d1 = d1[:min_frames]
                  d2 = d2[:min_frames]
              else:
-                 raise ValueError("通道1和通道2的帧数严重不匹配且无法自动修复！")
+                 raise ValueError("通道1和通道2的帧数严重不匹配！")
         else:
             raise ValueError(f"图像尺寸不匹配: {d1.shape} vs {d2.shape}")
         
