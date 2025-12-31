@@ -148,7 +148,7 @@ This software relies on the following open-source libraries and methods:
 * **Tifffile**: Gohlke, C. (2023). tifffile. PyPI. [URL](https://pypi.org/project/tifffile/)
 * **Fiji (Inspiration)**: Schindelin, J., et al. (2012). Fiji: an open-source platform for biological-image analysis. *Nature Methods*, 9(7), 676–682.
 
-## cite: Citation
+## Citation
 
 If you use **RIA** in your research, please cite it as:
 
