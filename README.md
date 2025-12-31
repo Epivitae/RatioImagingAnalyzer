@@ -32,7 +32,7 @@ Ratiometric imaging (like FRET or sensors for Tryptophan/pH/Ca²⁺) is amazing 
 We built RIA so you can take your TIFF stacks, go to a coffee shop (or just your desk), and run rigorous analysis on your own laptop—no coding required.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Epivitae/RatioImagingAnalyzer/main/src/ria_gui/assets/figure/analysis.gif" width="300" alt="RIA Interface showing trace analysis">
+  <img src="https://raw.githubusercontent.com/Epivitae/RatioImagingAnalyzer/main/src/ria_gui/assets/figure/analysis.gif" width="600" alt="RIA Interface showing trace analysis">
 </p>
 
 
