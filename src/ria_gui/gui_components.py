@@ -35,7 +35,6 @@ class PlotManager:
         self.toolbar._message_label.config(background="#FFFFFF")
         self.toolbar.update()
 
-    # --- Show Logo Only (No Text) ---
     def show_logo(self, logo_path):
         self.fig.clear() 
         self.ax = self.fig.add_subplot(111)
@@ -324,7 +323,6 @@ class RoiManager:
         if data_num is None: return
         self.is_calculating = True
         
-        # [New] Get Aux Data
         data_aux_list = getattr(self.app, 'data_aux', [])
         bg_aux_list = getattr(self.app, 'cached_bg_aux', [])
         
@@ -369,7 +367,6 @@ class RoiManager:
                     results.append({'id': item['id'], 'color': item['color'], 'means': means, 'means_num': means, 'means_den': means, 'means_aux': []})
                     continue
                 
-                # --- Core Ratio Calculation ---
                 roi_num = data_num[:, y_idxs, x_idxs].astype(np.float32) - bg_num
                 roi_den = data_den[:, y_idxs, x_idxs].astype(np.float32) - bg_den
                 
@@ -391,11 +388,9 @@ class RoiManager:
                 means_den = np.nanmean(roi_den, axis=1)
                 means_den = np.nan_to_num(means_den, nan=0.0)
                 
-                # --- [New] Aux Calculation ---
                 means_aux = []
                 for i, d_aux in enumerate(data_aux_list):
                     bg_val = bg_aux_list[i] if i < len(bg_aux_list) else 0
-                    # Slice ROI
                     roi_aux = d_aux[:, y_idxs, x_idxs].astype(np.float32) - bg_val
                     roi_aux = np.clip(roi_aux, 0, None)
                     m = np.nanmean(roi_aux, axis=1)
@@ -520,6 +515,17 @@ class RoiManager:
         
         self.plot_ax.clear()
         
+        # Determine mapping for Legend
+        try: mode_var = self.app.ratio_mode_var.get()
+        except: mode_var = "c1_c2"
+        
+        if mode_var == "c1_c2":
+            label_num_name = "Ch1"
+            label_den_name = "Ch2"
+        else:
+            label_num_name = "Ch2"
+            label_den_name = "Ch1"
+        
         if self.plot_mode == "combo":
             use_dual_axis = not do_norm
             
@@ -534,18 +540,21 @@ class RoiManager:
                 lines.append(l1)
                 
                 target_ax = self.plot_ax_right if use_dual_axis else self.plot_ax
-                # Num / Den
-                l2, = target_ax.plot(x, s['means_num'], color=s['color'], linestyle='--', linewidth=1, alpha=0.7, label=f"ROI {s['id']} Num")
+                
+                # Num -> Mapped to ChX
+                l2, = target_ax.plot(x, s['means_num'], color=s['color'], linestyle='--', linewidth=1, alpha=0.7, label=f"ROI {s['id']} {label_num_name}")
                 lines.append(l2)
-                l3, = target_ax.plot(x, s['means_den'], color=s['color'], linestyle=':', linewidth=1, alpha=0.7, label=f"ROI {s['id']} Den")
+                
+                # Den -> Mapped to ChY
+                l3, = target_ax.plot(x, s['means_den'], color=s['color'], linestyle=':', linewidth=1, alpha=0.7, label=f"ROI {s['id']} {label_den_name}")
                 lines.append(l3)
                 
-                # [New] Aux Plotting
                 if 'means_aux' in s:
                     for i, aux_data in enumerate(s['means_aux']):
-                        # Use grey lines for Aux
+                        # Aux channels start from Ch3 if we assume Ch1/Ch2 are used
+                        # But without explicit index tracking, just label Aux 1, Aux 2
                         l_aux, = target_ax.plot(x, aux_data, color='gray', linestyle='-.', linewidth=1, alpha=0.5, 
-                                                label=f"ROI {s['id']} Aux{i+1}")
+                                                label=f"ROI {s['id']} Aux {i+1}")
                         lines.append(l_aux)
             
             self.plot_ax.set_ylabel(r"$\Delta R / R_0$" if do_norm else "Ratio")
@@ -572,20 +581,15 @@ class RoiManager:
             
         self.plot_ax.set_yscale('log' if (is_log and self.plot_mode=="ratio") else 'linear')
         
-        try: mode_var = self.app.ratio_mode_var.get()
-        except: mode_var = "c1_c2"
-
         if self.plot_mode == "ratio":
             if do_norm: ylabel = r"$\Delta R / R_0$"
-            else: ylabel = "Ratio (Ch1/Ch2)" if mode_var == "c1_c2" else "Ratio (Ch2/Ch1)"
+            else: ylabel = f"Ratio ({label_num_name}/{label_den_name})"
         elif self.plot_mode == "num":
-            ch_name = "Ch1" if mode_var == "c1_c2" else "Ch2"
-            if do_norm: ylabel = r"$\Delta F / F_0$ (" + ch_name + ")"
-            else: ylabel = f"Intensity ({ch_name})"
+            if do_norm: ylabel = r"$\Delta F / F_0$ (" + label_num_name + ")"
+            else: ylabel = f"Intensity ({label_num_name})"
         elif self.plot_mode == "den":
-            ch_name = "Ch2" if mode_var == "c1_c2" else "Ch1"
-            if do_norm: ylabel = r"$\Delta F / F_0$ (" + ch_name + ")"
-            else: ylabel = f"Intensity ({ch_name})"
+            if do_norm: ylabel = r"$\Delta F / F_0$ (" + label_den_name + ")"
+            else: ylabel = f"Intensity ({label_den_name})"
             
         self.plot_ax.set_ylabel(ylabel)
         self.plot_ax.set_xlabel(f"Time ({unit})")

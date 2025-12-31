@@ -1,4 +1,4 @@
-# src/gui.py
+# src/gui.py - PART 1 OF 4
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, Toplevel
 import tkinter.font as tkfont
@@ -167,6 +167,27 @@ class RatioAnalyzerApp:
         if key not in LANG_MAP: return key
         return LANG_MAP[key][self.current_lang]
 
+    def toggle_language(self):
+        self.current_lang = "en" if self.current_lang == "cn" else "cn"
+        self.update_language()
+
+    def update_language(self):
+        self.root.title(self.t("window_title").format(self.VERSION))
+        self.lbl_title.config(text=self.t("header_title"))
+        for key, widget in self.ui_elements.items():
+            try:
+                if callable(widget): 
+                    widget(self.t(key))
+                else:
+                    widget.config(text=self.t(key))
+            except: pass
+        if self.c1_path is None: self.lbl_c1_path.config(text=self.t("lbl_no_file"))
+        if self.c2_path is None: self.lbl_c2_path.config(text=self.t("lbl_no_file"))
+        if self.dual_path is None: self.lbl_dual_path.config(text=self.t("lbl_no_file"))
+        
+        if hasattr(self, 'combo_mode'):
+            self.update_mode_options()
+
     def change_font_size(self, delta):
         new_size = self.current_font_size + delta
         if new_size < 8: new_size = 8
@@ -191,6 +212,8 @@ class RatioAnalyzerApp:
     def star_github(self):
         webbrowser.open("https://github.com/Epivitae/RatioImagingAnalyzer")
         self.btn_github.config(text="★ GitHub", style="Starred.TButton")
+
+# src/gui.py - PART 2 OF 4
 
     def setup_ui_skeleton(self):
         header = ttk.Frame(self.root, padding="15 10", style="Header.TFrame")
@@ -262,7 +285,7 @@ class RatioAnalyzerApp:
         self.create_compact_file_row(self.tab_sep, "btn_c1", self.select_c1, "lbl_c1_path")
         self.create_compact_file_row(self.tab_sep, "btn_c2", self.select_c2, "lbl_c2_path")
         
-        # [Modified] Tab Dual Layout for Multichannel
+        # Tab Dual Layout for Multichannel
         self.tab_dual = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
         self.nb_import.add(self.tab_dual, text=" Single File ")
         self.ui_elements["tab_dual"] = lambda text: self.nb_import.tab(1, text=text)
@@ -280,7 +303,6 @@ class RatioAnalyzerApp:
         # Channel Count Spinbox
         ttk.Label(f_inter, text="Ch Count:", style="White.TLabel").pack(side="left", padx=(10, 2))
         self.var_n_channels = tk.IntVar(value=2)
-        # Using simple validation to ensure >=2
         self.sp_channels = ttk.Spinbox(f_inter, from_=2, to=20, textvariable=self.var_n_channels, width=3)
         self.sp_channels.pack(side="left")
         
@@ -295,153 +317,6 @@ class RatioAnalyzerApp:
         self.btn_clear_data = ttk.Button(f_actions, text="🗑", width=8, command=self.clear_all_data, style="Gray.TButton")
         self.btn_clear_data.pack(side="right", fill="y")
 
-    # [New] Dialog to assign channels if > 2 detected
-    def ask_channel_roles(self, n_channels):
-        dialog = Toplevel(self.root)
-        dialog.title("Assign Channels")
-        dialog.geometry("320x300")
-        dialog.transient(self.root)
-        dialog.grab_set()
-        
-        # Center the dialog
-        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 160
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 150
-        dialog.geometry(f"+{x}+{y}")
-        
-        ttk.Label(dialog, text=f"Detected {n_channels} Channels!", font=("Segoe UI", 11, "bold")).pack(pady=10)
-        ttk.Label(dialog, text="Please select the pair for Ratio calculation:").pack()
-        
-        f_form = ttk.Frame(dialog, padding=20)
-        f_form.pack(fill="x")
-        
-        opts = [f"Channel {i+1}" for i in range(n_channels)]
-        
-        ttk.Label(f_form, text="Numerator (Ch1):").grid(row=0, column=0, pady=5, sticky="e")
-        cb_num = ttk.Combobox(f_form, values=opts, state="readonly", width=12)
-        cb_num.current(0)
-        cb_num.grid(row=0, column=1, pady=5, padx=5)
-        
-        ttk.Label(f_form, text="Denominator (Ch2):").grid(row=1, column=0, pady=5, sticky="e")
-        cb_den = ttk.Combobox(f_form, values=opts, state="readonly", width=12)
-        cb_den.current(1) 
-        cb_den.grid(row=1, column=1, pady=5, padx=5)
-        
-        ttk.Label(dialog, text="(Remaining channels will be loaded as Aux)", foreground="gray", font=("Segoe UI", 9)).pack()
-        
-        selection = {"num": 0, "den": 1}
-        
-        def confirm():
-            n = cb_num.current()
-            d = cb_den.current()
-            if n == d:
-                messagebox.showwarning("Warning", "Numerator and Denominator cannot be the same channel!")
-                return
-            selection["num"] = n
-            selection["den"] = d
-            dialog.destroy()
-            
-        ttk.Button(dialog, text="Confirm", command=confirm, style="Success.TButton").pack(pady=15, fill="x", padx=40)
-        
-        self.root.wait_window(dialog)
-        return selection
-
-    def load_data(self):
-        try:
-            self.root.config(cursor="watch")
-            self.root.update()
-            
-            # Clear previous Aux data
-            self.data_aux = []
-            
-            current_tab = self.nb_import.index("current")
-            channels = []
-            
-            if current_tab == 0:
-                # Separate files (assume 2 channels)
-                d1, d2 = read_separate_files(self.c1_path, self.c2_path)
-                channels = [d1, d2]
-            else:
-                # Single file (Multichannel supported)
-                n_ch = self.var_n_channels.get() if self.is_interleaved_var.get() else 2
-                channels = read_and_split_multichannel(self.dual_path, self.is_interleaved_var.get(), n_ch)
-
-            # Assign Roles
-            if len(channels) == 2:
-                self.data1 = channels[0]
-                self.data2 = channels[1]
-                self.data_aux = []
-            elif len(channels) > 2:
-                self.root.config(cursor="") # Restore cursor for interaction
-                roles = self.ask_channel_roles(len(channels))
-                
-                idx_num = roles["num"]
-                idx_den = roles["den"]
-                
-                self.data1 = channels[idx_num]
-                self.data2 = channels[idx_den]
-                
-                # Store others in data_aux
-                self.data_aux = []
-                for i, d in enumerate(channels):
-                    if i != idx_num and i != idx_den:
-                        self.data_aux.append(d)
-            else:
-                raise ValueError(f"Channel count < 2 (Got {len(channels)})")
-
-            self.data1_raw = None
-            self.data2_raw = None
-            self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
-            self.btn_align.config(state="normal", text=self.t("btn_align"), style="TButton")
-
-            self.recalc_background()
-            self.frame_scale.configure(to=self.data1.shape[0]-1)
-            self.var_frame.set(0); self.frame_scale.set(0)
-            h, w = self.data1.shape[1], self.data1.shape[2]
-            self.plot_mgr.init_image((h, w), cmap="coolwarm")
-            self.roi_mgr.connect(self.plot_mgr.ax)
-            self.update_plot()
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-        finally:
-            self.root.config(cursor="")
-
-    def clear_all_data(self):
-        self.is_playing = False
-        self.btn_play.config(text="▶")
-
-        self.data1 = None
-        self.data2 = None
-        self.data_aux = [] # Clear aux
-        self.data1_raw = None
-        self.data2_raw = None
-        self.cached_bg1 = 0
-        self.cached_bg2 = 0
-        self.cached_bg_aux = []
-        
-        self.c1_path = None
-        self.c2_path = None
-        self.dual_path = None
-        
-        self.lbl_c1_path.config(text=self.t("lbl_no_file"))
-        self.lbl_c2_path.config(text=self.t("lbl_no_file"))
-        self.lbl_dual_path.config(text=self.t("lbl_no_file"))
-        
-        self.btn_load.config(state="disabled")
-        self.btn_align.config(state="disabled", text=self.t("btn_align"), style="TButton")
-        self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
-        
-        self.roi_mgr.clear_all()
-        
-        if self.plot_mgr:
-            logo_path = self.get_asset_path("app_ico.png")
-            self.plot_mgr.show_logo(logo_path)
-        
-        self.var_frame.set(0)
-        self.frame_scale.configure(to=1, value=0)
-        self.lbl_frame.config(text="0/0")
-        self.pb_align.pack_forget()
-
-    # ... setup_preprocess_group, setup_calc_group ... (Same as before)
     def setup_preprocess_group(self):
         self.grp_pre = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
         self.grp_pre.pack(fill="x", pady=(0, 10))
@@ -519,9 +394,246 @@ class RatioAnalyzerApp:
                     self.brand_icon_img = self.brand_icon_img.subsample(scale_factor, scale_factor)
                 ttk.Label(inner_box, image=self.brand_icon_img, style="White.TLabel").pack(side="top", pady=(0, 5)) 
         except Exception as e: print(f"Brand icon load error: {e}")
-        ttk.Label(inner_box, text="RIA 莉丫", font=("Microsoft YaHei UI", 12, "bold"), foreground="#0056b3", style="White.TLabel").pack(side="top")
+        
+        # [English Only]
+        ttk.Label(inner_box, text="RIA", font=("Microsoft YaHei UI", 12, "bold"), foreground="#0056b3", style="White.TLabel").pack(side="top")
         current_year = datetime.datetime.now().year
         ttk.Label(inner_box, text=f"© {current_year} Dr. Kui Wang | www.cns.ac.cn", font=("Segoe UI", 8), foreground="gray", style="White.TLabel").pack(side="top", pady=(2, 0))
+
+
+# src/gui.py - PART 3 OF 4
+
+    def ask_channel_roles(self, n_channels):
+        dialog = Toplevel(self.root)
+        dialog.title("Assign Channels")
+        dialog.geometry("320x300")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 160
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 150
+        dialog.geometry(f"+{x}+{y}")
+        
+        ttk.Label(dialog, text=f"Detected {n_channels} Channels!", font=("Segoe UI", 11, "bold")).pack(pady=10)
+        ttk.Label(dialog, text="Please select the pair for Ratio calculation:").pack()
+        
+        f_form = ttk.Frame(dialog, padding=20)
+        f_form.pack(fill="x")
+        
+        opts = [f"Channel {i+1}" for i in range(n_channels)]
+        
+        ttk.Label(f_form, text="Numerator (Ch1):").grid(row=0, column=0, pady=5, sticky="e")
+        cb_num = ttk.Combobox(f_form, values=opts, state="readonly", width=12)
+        cb_num.current(0)
+        cb_num.grid(row=0, column=1, pady=5, padx=5)
+        
+        ttk.Label(f_form, text="Denominator (Ch2):").grid(row=1, column=0, pady=5, sticky="e")
+        cb_den = ttk.Combobox(f_form, values=opts, state="readonly", width=12)
+        cb_den.current(1) 
+        cb_den.grid(row=1, column=1, pady=5, padx=5)
+        
+        ttk.Label(dialog, text="(Remaining channels will be loaded as Aux)", foreground="gray", font=("Segoe UI", 9)).pack()
+        
+        selection = {"num": 0, "den": 1}
+        
+        def confirm():
+            n = cb_num.current()
+            d = cb_den.current()
+            if n == d:
+                messagebox.showwarning("Warning", "Numerator and Denominator cannot be the same channel!")
+                return
+            selection["num"] = n
+            selection["den"] = d
+            dialog.destroy()
+            
+        ttk.Button(dialog, text="Confirm", command=confirm, style="Success.TButton").pack(pady=15, fill="x", padx=40)
+        
+        self.root.wait_window(dialog)
+        return selection
+
+    def load_data(self):
+        try:
+            self.root.config(cursor="watch")
+            self.root.update()
+            
+            self.data_aux = []
+            
+            current_tab = self.nb_import.index("current")
+            channels = []
+            
+            if current_tab == 0:
+                d1, d2 = read_separate_files(self.c1_path, self.c2_path)
+                channels = [d1, d2]
+            else:
+                n_ch = self.var_n_channels.get() if self.is_interleaved_var.get() else 2
+                channels = read_and_split_multichannel(self.dual_path, self.is_interleaved_var.get(), n_ch)
+
+            if len(channels) == 2:
+                self.data1 = channels[0]
+                self.data2 = channels[1]
+                self.data_aux = []
+            elif len(channels) > 2:
+                self.root.config(cursor="")
+                roles = self.ask_channel_roles(len(channels))
+                
+                idx_num = roles["num"]
+                idx_den = roles["den"]
+                
+                self.data1 = channels[idx_num]
+                self.data2 = channels[idx_den]
+                
+                self.data_aux = []
+                for i, d in enumerate(channels):
+                    if i != idx_num and i != idx_den:
+                        self.data_aux.append(d)
+            else:
+                raise ValueError(f"Channel count < 2 (Got {len(channels)})")
+
+            self.data1_raw = None
+            self.data2_raw = None
+            self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
+            self.btn_align.config(state="normal", text=self.t("btn_align"), style="TButton")
+
+            self.recalc_background()
+            self.frame_scale.configure(to=self.data1.shape[0]-1)
+            self.var_frame.set(0); self.frame_scale.set(0)
+            h, w = self.data1.shape[1], self.data1.shape[2]
+            self.plot_mgr.init_image((h, w), cmap="coolwarm")
+            self.roi_mgr.connect(self.plot_mgr.ax)
+            self.update_plot()
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+        finally:
+            self.root.config(cursor="")
+
+    def clear_all_data(self):
+        self.is_playing = False
+        self.btn_play.config(text="▶")
+
+        self.data1 = None
+        self.data2 = None
+        self.data_aux = []
+        self.data1_raw = None
+        self.data2_raw = None
+        self.cached_bg1 = 0
+        self.cached_bg2 = 0
+        self.cached_bg_aux = []
+        
+        self.c1_path = None
+        self.c2_path = None
+        self.dual_path = None
+        
+        self.lbl_c1_path.config(text=self.t("lbl_no_file"))
+        self.lbl_c2_path.config(text=self.t("lbl_no_file"))
+        self.lbl_dual_path.config(text=self.t("lbl_no_file"))
+        
+        self.btn_load.config(state="disabled")
+        self.btn_align.config(state="disabled", text=self.t("btn_align"), style="TButton")
+        self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
+        
+        self.roi_mgr.clear_all()
+        
+        if self.plot_mgr:
+            logo_path = self.get_asset_path("app_ico.png")
+            self.plot_mgr.show_logo(logo_path)
+        
+        self.var_frame.set(0)
+        self.frame_scale.configure(to=1, value=0)
+        self.lbl_frame.config(text="0/0")
+        self.pb_align.pack_forget()
+
+    def update_mode_options(self):
+        txt_c1_c2 = self.t("mode_c1_c2") if "mode_c1_c2" in LANG_MAP else "Ch1 / Ch2"
+        txt_c2_c1 = self.t("mode_c2_c1") if "mode_c2_c1" in LANG_MAP else "Ch2 / Ch1"
+        self.combo_mode['values'] = [txt_c1_c2, txt_c2_c1]
+        current_idx = 0 if self.ratio_mode_var.get() == "c1_c2" else 1
+        self.combo_mode.current(current_idx)
+
+    def on_mode_change(self, event):
+        idx = self.combo_mode.current()
+        self.ratio_mode_var.set("c1_c2" if idx == 0 else "c2_c1")
+        self.update_plot()
+
+    def get_active_data(self):
+        if self.data1 is None: return None, None, 0, 0
+        if self.ratio_mode_var.get() == "c1_c2":
+            return self.data1, self.data2, self.cached_bg1, self.cached_bg2
+        else:
+            return self.data2, self.data1, self.cached_bg2, self.cached_bg1
+
+    def create_compact_file_row(self, parent, btn_key, cmd, lbl_attr):
+        f = ttk.Frame(parent, style="White.TFrame"); f.pack(fill="x", pady=1)
+        btn = ttk.Button(f, command=cmd); btn.pack(side="left")
+        self.ui_elements[btn_key] = btn
+        lbl = ttk.Label(f, text="...", foreground="gray", anchor="w", style="White.TLabel"); lbl.pack(side="left", padx=5, fill="x", expand=True)
+        setattr(self, lbl_attr, lbl)
+
+    def create_slider(self, parent, label_key, min_v, max_v, step, variable, is_int=False):
+        f = ttk.Frame(parent, style="White.TFrame"); f.pack(fill="x", pady=1)
+        h = ttk.Frame(f, style="White.TFrame"); h.pack(fill="x")
+        lbl = ttk.Label(h, style="White.TLabel"); lbl.pack(side="left") 
+        self.ui_elements[label_key] = lbl
+        val_lbl = ttk.Label(h, text=str(variable.get()), foreground="#007acc", font=self.f_bold, style="White.TLabel")
+        val_lbl.pack(side="right", padx=(0, 10))
+        def on_slide(v):
+            val = float(v)
+            if is_int: val = int(val)
+            variable.set(val)
+            fmt = "{:.0f}" if is_int else "{:.1f}"
+            val_lbl.config(text=fmt.format(val))
+            if not self.is_playing: self.update_plot()
+        s = ttk.Scale(f, from_=min_v, to=max_v, command=on_slide); s.set(variable.get()); s.pack(fill="x")
+
+    def create_bg_slider(self, parent, label_key, min_v, max_v, variable):
+        f = ttk.Frame(parent, style="White.TFrame"); f.pack(fill="x", pady=1)
+        h = ttk.Frame(f, style="White.TFrame"); h.pack(fill="x")
+        lbl = ttk.Label(h, style="White.TLabel"); lbl.pack(side="left") 
+        self.ui_elements[label_key] = lbl
+        val_lbl = ttk.Label(h, text=str(variable.get()), foreground="red", font=self.f_bold, style="White.TLabel")
+        val_lbl.pack(side="right", padx=(0, 10))
+        def on_move(v): val_lbl.config(text=f"{int(float(v))}")
+        def on_release(event):
+            val = int(self.bg_scale.get())
+            variable.set(val)
+            self.recalc_background()
+            self.update_plot()
+        self.bg_scale = ttk.Scale(f, from_=min_v, to=max_v, command=on_move)
+        self.bg_scale.set(variable.get()); self.bg_scale.pack(fill="x")
+        self.bg_scale.bind("<ButtonRelease-1>", on_release)
+
+    def recalc_background(self):
+        if self.data1 is None: return
+        try:
+            p = self.var_bg.get()
+            self.cached_bg1 = calculate_background(self.data1, p)
+            self.cached_bg2 = calculate_background(self.data2, p)
+            self.cached_bg_aux = []
+            if hasattr(self, 'data_aux'):
+                for aux in self.data_aux:
+                    self.cached_bg_aux.append(calculate_background(aux, p))
+        except: pass
+
+    def select_c1(self):
+        p = filedialog.askopenfilename()
+        if p: self.c1_path = p; self.lbl_c1_path.config(text=os.path.basename(p)); self.check_ready()
+    def select_c2(self):
+        p = filedialog.askopenfilename()
+        if p: self.c2_path = p; self.lbl_c2_path.config(text=os.path.basename(p)); self.check_ready()
+    def select_dual(self):
+        p = filedialog.askopenfilename(filetypes=[("TIFF Files", "*.tif *.tiff *.nd2"), ("All Files", "*.*")])
+        if p: 
+            self.dual_path = p
+            self.lbl_dual_path.config(text=os.path.basename(p))
+            self.check_ready()
+
+    def check_ready(self):
+        current_tab = self.nb_import.index("current")
+        if current_tab == 0:
+            if self.c1_path and self.c2_path: self.btn_load.config(state="normal")
+            else: self.btn_load.config(state="disabled")
+        else:
+            if self.dual_path: self.btn_load.config(state="normal")
+            else: self.btn_load.config(state="disabled")
 
     def create_bottom_panel(self, parent):
         bottom_area = ttk.Frame(parent, padding=(0, 10, 0, 0), style="White.TFrame")
@@ -590,81 +702,8 @@ class RatioAnalyzerApp:
         self.btn_contact = ttk.Button(fr_set.sub_frame, command=lambda: webbrowser.open("https://www.cns.ac.cn")); self.btn_contact.pack(fill="x", pady=2)
         self.ui_elements["btn_contact"] = self.btn_contact
 
-    def create_compact_file_row(self, parent, btn_key, cmd, lbl_attr):
-        f = ttk.Frame(parent, style="White.TFrame"); f.pack(fill="x", pady=1)
-        btn = ttk.Button(f, command=cmd); btn.pack(side="left")
-        self.ui_elements[btn_key] = btn
-        lbl = ttk.Label(f, text="...", foreground="gray", anchor="w", style="White.TLabel"); lbl.pack(side="left", padx=5, fill="x", expand=True)
-        setattr(self, lbl_attr, lbl)
 
-    def create_slider(self, parent, label_key, min_v, max_v, step, variable, is_int=False):
-        f = ttk.Frame(parent, style="White.TFrame"); f.pack(fill="x", pady=1)
-        h = ttk.Frame(f, style="White.TFrame"); h.pack(fill="x")
-        lbl = ttk.Label(h, style="White.TLabel"); lbl.pack(side="left") 
-        self.ui_elements[label_key] = lbl
-        val_lbl = ttk.Label(h, text=str(variable.get()), foreground="#007acc", font=self.f_bold, style="White.TLabel")
-        val_lbl.pack(side="right", padx=(0, 10))
-        def on_slide(v):
-            val = float(v)
-            if is_int: val = int(val)
-            variable.set(val)
-            fmt = "{:.0f}" if is_int else "{:.1f}"
-            val_lbl.config(text=fmt.format(val))
-            if not self.is_playing: self.update_plot()
-        s = ttk.Scale(f, from_=min_v, to=max_v, command=on_slide); s.set(variable.get()); s.pack(fill="x")
-
-    def create_bg_slider(self, parent, label_key, min_v, max_v, variable):
-        f = ttk.Frame(parent, style="White.TFrame"); f.pack(fill="x", pady=1)
-        h = ttk.Frame(f, style="White.TFrame"); h.pack(fill="x")
-        lbl = ttk.Label(h, style="White.TLabel"); lbl.pack(side="left") 
-        self.ui_elements[label_key] = lbl
-        val_lbl = ttk.Label(h, text=str(variable.get()), foreground="red", font=self.f_bold, style="White.TLabel")
-        val_lbl.pack(side="right", padx=(0, 10))
-        def on_move(v): val_lbl.config(text=f"{int(float(v))}")
-        def on_release(event):
-            val = int(self.bg_scale.get())
-            variable.set(val)
-            self.recalc_background()
-            self.update_plot()
-        self.bg_scale = ttk.Scale(f, from_=min_v, to=max_v, command=on_move)
-        self.bg_scale.set(variable.get()); self.bg_scale.pack(fill="x")
-        self.bg_scale.bind("<ButtonRelease-1>", on_release)
-
-    def recalc_background(self):
-        if self.data1 is None: return
-        try:
-            p = self.var_bg.get()
-            self.cached_bg1 = calculate_background(self.data1, p)
-            self.cached_bg2 = calculate_background(self.data2, p)
-            
-            # [Updated] Calculate background for aux channels
-            self.cached_bg_aux = []
-            if hasattr(self, 'data_aux'):
-                for aux in self.data_aux:
-                    self.cached_bg_aux.append(calculate_background(aux, p))
-        except: pass
-
-    def select_c1(self):
-        p = filedialog.askopenfilename()
-        if p: self.c1_path = p; self.lbl_c1_path.config(text=os.path.basename(p)); self.check_ready()
-    def select_c2(self):
-        p = filedialog.askopenfilename()
-        if p: self.c2_path = p; self.lbl_c2_path.config(text=os.path.basename(p)); self.check_ready()
-    def select_dual(self):
-        p = filedialog.askopenfilename(filetypes=[("TIFF Files", "*.tif *.tiff *.nd2"), ("All Files", "*.*")])
-        if p: 
-            self.dual_path = p
-            self.lbl_dual_path.config(text=os.path.basename(p))
-            self.check_ready()
-
-    def check_ready(self):
-        current_tab = self.nb_import.index("current")
-        if current_tab == 0:
-            if self.c1_path and self.c2_path: self.btn_load.config(state="normal")
-            else: self.btn_load.config(state="disabled")
-        else:
-            if self.dual_path: self.btn_load.config(state="normal")
-            else: self.btn_load.config(state="disabled")
+# src/gui.py - PART 4 OF 4
 
     def run_alignment_thread(self):
         if self.data1 is None: return
@@ -721,9 +760,7 @@ class RatioAnalyzerApp:
             self.root.after(1000, restore_undo_btn)
 
     def get_processed_frame(self, frame_idx):
-        # [Updated] Use get_active_data to respect Ratio Mode
         d_num, d_den, bg_num, bg_den = self.get_active_data()
-        
         if d_num is None: return None
         return process_frame_ratio(
             d_num[frame_idx], d_den[frame_idx],
@@ -894,3 +931,4 @@ if __name__ == "__main__":
     root.title("RIA - Ratio Imaging Analyzer")
     app = RatioAnalyzerApp(root)
     root.mainloop()
+
