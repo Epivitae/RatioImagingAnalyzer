@@ -1,26 +1,26 @@
 {
   "title": "Ratio Imaging Analyzer (RIA): A Standalone, Zero-Dependency Tool for Robust Ratiometric Fluorescence Analysis",
-  "description": "<p><strong>Ratio Imaging Analyzer (RIA)</strong> is a professional-grade, open-source desktop application engineered to democratize the analysis of ratiometric imaging data (e.g., GEM-GECO, Cameleon, FRET sensors). It addresses the technical barriers in neuroscience and cell biology by eliminating the need for complex programming environments (MATLAB/Python) or heavy image processing suites.</p><p><strong>Key Capabilities & Impact:</strong></p><ul><li><strong>🚀 Zero-Dependency Portability:</strong> Distributed as a single, lightweight executable (.exe). No installation or environment configuration required—just click and run.</li><li><strong>🧠 Built-in Motion Correction:</strong> Integrated high-performance image registration algorithms to automatically stabilize shaky recordings, ensuring precise pixel-to-pixel ratio calculations.</li><li><strong>✨ Advanced ROI Workflow:</strong> Features a modernized interactive Region of Interest (ROI) manager with high-contrast visualization, auto-naming, and batch processing capabilities.</li><li><strong>📊 Quantitative Ratiometry:</strong> Automated background subtraction, threshold-based noise filtering, and real-time dual-channel ratio calculation (&Delta;R/R) with interactive plotting.</li><li><strong>📂 Publication-Ready:</strong> Streamlines the pipeline from raw TIFF stacks to exported data (CSV/JSON), significantly reducing analysis time for researchers.</li></ul><p>RIA bridges the critical gap between raw microscopy data and physiological insights, making advanced ratiometric analysis accessible to wet-lab biologists without coding expertise.</p>",
+  "description": "<p><strong>Ratio Imaging Analyzer (RIA)</strong> is a lightweight, open-source desktop application designed to streamline the processing of ratiometric fluorescence imaging data. Unlike complex image processing libraries that require scripting skills, RIA bridges the gap between raw data and biological insight through a user-friendly Graphical User Interface (GUI).</p><p><strong>Statement of Need:</strong></p><p>Quantitative analysis of time-lapse data remains a bottleneck for \"wet-lab\" experimental biologists. RIA addresses this challenge by offering an \"all-in-one\" standalone executable that runs on standard personal computers without requiring Python environment configuration.</p><p><strong>Key Features:</strong></p><ul><li><strong>🚀 Zero-Dependency Portability:</strong> Distributed as a portable executable (.exe) to eliminate technical barriers for researchers.</li><li><strong>🧠 Robust Motion Correction:</strong> Integrates the Enhanced Correlation Coefficient (ECC) algorithm to automatically align image stacks and compensate for sample drift.</li><li><strong>✨ High-Contrast ROI Analysis:</strong> Features a custom multi-layered rendering system for Regions of Interest (ROI), ensuring visibility against complex fluorescent backgrounds.</li><li><strong>⚡ High-Performance Processing:</strong> Leverages <code>OpenCV-headless</code> and vectorized <code>NumPy</code> operations to replace heavier dependencies, ensuring real-time performance on consumer-grade CPUs.</li><li><strong>📉 Advanced Signal Processing:</strong> Implements custom <strong>Normalized Convolution</strong> for smoothing to prevent artifacts at image boundaries containing masked backgrounds.</li></ul>",
   "creators": [
     {
       "name": "Wang, Kui",
-      "affiliation": "Institute of Neuroscience, Center for Excellence in Brain Science and Intelligence Technology, Chinese Academy of Sciences",
+      "affiliation": "Center for Excellence in Brain Science and Intelligence Technology (Institute of Neuroscience), Chinese Academy of Sciences",
       "orcid": "0000-0002-9436-3632"
     }
   ],
   "access_right": "open",
   "license": "MIT",
   "keywords": [
-    "ratiometric analysis",
+    "Python",
+    "biology",
     "fluorescence imaging",
     "calcium imaging",
-    "neuroscience",
-    "motion correction",
-    "image registration",
-    "GUI",
-    "python",
     "FRET",
-    "open source tools"
+    "ratiometric analysis",
+    "genetically encoded indicator",
+    "motion correction",
+    "computer vision",
+    "graphical user interface"
   ],
   "upload_type": "software"
 }
