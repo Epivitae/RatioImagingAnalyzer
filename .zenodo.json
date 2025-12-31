@@ -1,6 +1,6 @@
 {
-  "title": "Ratio Imaging Analyzer (RIA): A Lightweight, Standalone Python Tool for Portable Ratiometric Fluorescence Analysis",
-  "description": "Ratio Imaging Analyzer (RIA) is a lightweight, open-source desktop application designed to streamline the processing of ratiometric imaging data, specifically for genetically encoded fluorescent sensors.",
+  "title": "Ratio Imaging Analyzer (RIA): A Standalone, Zero-Dependency Tool for Robust Ratiometric Fluorescence Analysis",
+  "description": "<p><strong>Ratio Imaging Analyzer (RIA)</strong> is a professional-grade, open-source desktop application engineered to democratize the analysis of ratiometric imaging data (e.g., GEM-GECO, Cameleon, FRET sensors). It addresses the technical barriers in neuroscience and cell biology by eliminating the need for complex programming environments (MATLAB/Python) or heavy image processing suites.</p><p><strong>Key Capabilities & Impact:</strong></p><ul><li><strong>🚀 Zero-Dependency Portability:</strong> Distributed as a single, lightweight executable (.exe). No installation or environment configuration required—just click and run.</li><li><strong>🧠 Built-in Motion Correction:</strong> Integrated high-performance image registration algorithms to automatically stabilize shaky recordings, ensuring precise pixel-to-pixel ratio calculations.</li><li><strong>✨ Advanced ROI Workflow:</strong> Features a modernized interactive Region of Interest (ROI) manager with high-contrast visualization, auto-naming, and batch processing capabilities.</li><li><strong>📊 Quantitative Ratiometry:</strong> Automated background subtraction, threshold-based noise filtering, and real-time dual-channel ratio calculation (&Delta;R/R) with interactive plotting.</li><li><strong>📂 Publication-Ready:</strong> Streamlines the pipeline from raw TIFF stacks to exported data (CSV/JSON), significantly reducing analysis time for researchers.</li></ul><p>RIA bridges the critical gap between raw microscopy data and physiological insights, making advanced ratiometric analysis accessible to wet-lab biologists without coding expertise.</p>",
   "creators": [
     {
       "name": "Wang, Kui",
@@ -11,14 +11,16 @@
   "access_right": "open",
   "license": "MIT",
   "keywords": [
-    "Python",
-    "neuroscience", 
-    "fluorescence imaging",
-    "genetically encoded indicator",
     "ratiometric analysis",
+    "fluorescence imaging",
+    "calcium imaging",
+    "neuroscience",
     "motion correction",
-    "image processing",
-    "zebrafish"
+    "image registration",
+    "GUI",
+    "python",
+    "FRET",
+    "open source tools"
   ],
   "upload_type": "software"
 }
