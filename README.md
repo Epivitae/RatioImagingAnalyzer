@@ -106,8 +106,8 @@ Check the [Releases](https://github.com/Epivitae/RatioImagingAnalyzer/releases) 
 To test the software, you can use the sample data provided in the `data/` directory.
 
 1. **Launch RIA** : 
-   * pip: `ria` (pip), 
-   * git clone: `python src/ria_gui/main.py`exe
+   * pip: `ria`, 
+   * git clone: `python src/ria_gui/main.py`
    * exe: doble click only!
 2. **Load Files**:
    1. Separate Files model:
