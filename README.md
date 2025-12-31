@@ -125,7 +125,7 @@ To test the software, you can use the sample data provided in the `data/` direct
    * Adjust **Int. Min** (Intensity Threshold) to remove background noise.
    * *(Optional)* Enable **Log Scale** if the dynamic range is large.
 5. **Analyze**:
-   * Click **✏️ Draw ROI** or use `Ctrl + T` as a short-cut in the "ROI & Measurement" panel.
+   * Click **✏️ New** or use `Ctrl + T` as a short-cut in the "ROI & Measurement" panel.
    * Draw a ROI on the cell of interest.
    * Cilck **Plot Curve** and **Live Monitor**, a curve window will pop up showing the ratio/intensity change over time.
 
