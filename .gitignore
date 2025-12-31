@@ -23,3 +23,10 @@ htmlcov/
 # System
 .DS_Store
 Thumbs.db
+
+# PyPi build
+dist/
+build/
+*.egg-info/
+__pycache__/
+.pytest_cache/

@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ria-gui"
+version = "1.7.9.12"
+
+authors = [
+  { name = "Kui Wang" },           # 这一项只写名字，会被映射到 Author 字段
+  { email = "k@cns.ac.cn" },       # 这一项只写邮箱，会被映射到 Author-email 字段
+]
+
+
+
+maintainers = [
+  { name = "Kui Wang", email = "k@cns.ac.cn" },
+]
+
+description = "RIA: Ratio Imaging Analyzer for biological quantification"
+
+# 更规范的 readme 写法（带 content-type）
+readme = { file = "README.md", content-type = "text/markdown" }
+
+requires-python = ">=3.8"
+
+# 让 pip show 显示 License
+license = { text = "MIT License" }
+
+keywords = ["imaging", "biology", "quantification", "ratio", "gui", "fluorescence"]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+
+dependencies = [
+    "numpy",
+    "matplotlib",
+    "tifffile",
+    "opencv-python",
+    "requests",
+]
+
+[project.urls]
+Homepage = "https://github.com/Epivitae/RatioImagingAnalyzer"
+Documentation = "https://github.com/Epivitae/RatioImagingAnalyzer/wiki"
+Source = "https://github.com/Epivitae/RatioImagingAnalyzer"
+Issues = "https://github.com/Epivitae/RatioImagingAnalyzer/issues"
+
+[project.scripts]
+ria = "ria_gui.main:main"

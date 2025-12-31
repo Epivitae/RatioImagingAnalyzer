@@ -156,9 +156,16 @@ class RatioAnalyzerApp:
 
     def get_asset_path(self, filename):
         if hasattr(sys, '_MEIPASS'):
-            return os.path.join(sys._MEIPASS, "assets", filename)
+            path = os.path.join(sys._MEIPASS, "assets", filename)
         else:
-            return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", filename)
+            curr_dir = os.path.dirname(os.path.abspath(__file__))
+            path = os.path.join(curr_dir, "assets", filename)
+    
+    # --- 调试代码 ---
+        if not os.path.exists(path):
+            print(f"DEBUG: Resource not found at {path}")
+    # ----------------
+        return path
 
     def t(self, key):
         if key not in LANG_MAP: return key

@@ -1,0 +1,13 @@
+graft src
+include README.md
+include LICENSE
+include pyproject.toml
+recursive-include src/ria_gui/assets *
+
+prune paper
+prune data
+prune tests
+exclude auto-py-to-exe.txt
+exclude .gitignore
+exclude .github
+global-exclude *.py[cod] __pycache__ *.so
