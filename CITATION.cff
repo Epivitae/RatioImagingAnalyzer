@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Wang"
+  given-names: "Kui"
+  orcid: "https://orcid.org/0000-0002-9436-3632"
+  affiliation: "Institute of Neuroscience, CAS"
+title: "Ratio Imaging Analyzer (RIA): A Lightweight, Standalone Python Tool for Portable Ratiometric Fluorescence Analysis"
+version: 1.7.10.1
+doi: 10.5281/zenodo.18107966
+date-released: 2025-12-31
+url: "https://github.com/Epivitae/RatioImagingAnalyzer"
+license: MIT
