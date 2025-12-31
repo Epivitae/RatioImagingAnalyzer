@@ -4,6 +4,7 @@
   <h1>Ratio Imaging Analyzer (RIA / 莉丫)</h1>
 
   <p>
+    <a href="https://joss.theoj.org/papers/please-replace-with-your-id/status.svg"><img src="https://joss.theoj.org/papers/please-replace-with-your-id/status.svg" alt="JOSS Status"></a>
     <a href="https://pypi.org/project/ria-gui/"><img src="https://img.shields.io/pypi/v/ria-gui?color=blue" alt="PyPI"></a>
     <a href="https://joss.theoj.org/papers/@epivitae"><img src="https://joss.theoj.org/papers/please-replace-with-your-id/status.svg" alt="Status"></a>
     <a href="https://doi.org/10.5281/zenodo.18091693"><img src="https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18091693-0099CC" alt="DOI"></a>
