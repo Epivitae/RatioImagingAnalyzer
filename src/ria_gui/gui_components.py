@@ -10,11 +10,19 @@ from matplotlib.path import Path as MplPath
 from matplotlib.colors import LogNorm, Normalize
 import threading
 import time
-import os 
+import os
+import json # [New] Import json
+
+try:
+    from .plot_window import ROIPlotWindow
+except ImportError:
+    from plot_window import ROIPlotWindow
 
 ROI_COLORS = ['#FF3333', '#33FF33', '#3388FF', '#FFFF33', '#FF33FF', '#33FFFF', '#FF8833']
 
+# ... (PlotManager 类保持不变，此处省略) ...
 class PlotManager:
+    # ... (保持原样) ...
     def __init__(self, parent_frame):
         self.fig = plt.Figure(figsize=(6, 5), dpi=100)
         self.fig.patch.set_facecolor('#FFFFFF')
@@ -41,13 +49,11 @@ class PlotManager:
         self.ax.axis('off')
         self.im_object = None
         self.cbar = None
-
         if logo_path and os.path.exists(logo_path):
             try:
                 img_arr = plt.imread(logo_path)
                 self.ax.imshow(img_arr, alpha=0.15) 
-            except Exception:
-                pass
+            except Exception: pass
         self.canvas.draw()
 
     def init_image(self, shape, cmap="jet"):
@@ -95,13 +101,12 @@ class RoiManager:
         self.roi_list = [] 
         self.temp_roi = None
         
-        self.plot_window = None
-        self.plot_ax = None
-        self.plot_ax_right = None 
-        self.plot_canvas = None
-        
-        self.btn_copy_all = None
-        self.btn_copy_y = None
+        # 延迟导入以避免循环依赖
+        try:
+             from .plot_window import ROIPlotWindow
+        except ImportError:
+             from plot_window import ROIPlotWindow
+        self.plot_window_controller = ROIPlotWindow(self.app.root)
         
         self.is_calculating = False
         self.current_shape_mode = "rect" 
@@ -110,72 +115,62 @@ class RoiManager:
         self.drag_cid = None
         self.last_drag_time = 0
         
-        self.plot_mode = "ratio" 
-        self.cached_x = None
-        self.cached_series = None
-        self.cached_unit = "s"
-        self.cached_is_log = False
-        self.cached_do_norm = False
-        
-        self.btn_mode_ratio = None
-        self.btn_mode_num = None
-        self.btn_mode_den = None
-        self.btn_mode_combo = None 
+        self.btn_draw_ref = None
+
+    def set_draw_button(self, btn_widget):
+        self.btn_draw_ref = btn_widget
 
     def connect(self, ax):
         self.ax_ref = ax
-        self.clear_all()
+        # 连接时不需要 complete_clear，只需清理数据结构
+        self.roi_list = []
+        self.temp_roi = None
+        self._stop_selector()
 
     def set_mode(self, mode):
         self.current_shape_mode = mode
-        if self.temp_roi:
-            self._commit_temp_roi()
+        if self.temp_roi: self._commit_temp_roi()
+        self._stop_selector()
+
+    def cancel_drawing(self):
         self._stop_selector()
 
     def start_drawing(self):
         if not self.ax_ref: return
         if self.temp_roi: self._commit_temp_roi()
-        self._stop_selector()
+        self._stop_selector() 
         
+        if self.btn_draw_ref:
+            self.btn_draw_ref.state(['selected']) 
+            
         next_id = len(self.roi_list) + 1
         color_idx = (next_id - 1) % len(ROI_COLORS)
         color = ROI_COLORS[color_idx]
         
-        props = dict(facecolor=color, edgecolor='black', alpha=0.2, linestyle='--', fill=True)
+        # [修改 1] 交互绘制时的样式：提高不透明度(alpha 0.5)，加粗线条(linewidth 2)
+        props = dict(facecolor=color, edgecolor='black', alpha=0.5, linestyle='--', linewidth=2, fill=True)
         line_props = dict(color='black', linestyle='--', linewidth=2, alpha=0.8)
 
         if self.current_shape_mode == "rect":
-            self.selector = RectangleSelector(
-                self.ax_ref, self._on_select_finalize, 
-                useblit=True, button=[1], minspanx=5, minspany=5,
-                spancoords='pixels', interactive=True, props=props
-            )
+            self.selector = RectangleSelector(self.ax_ref, self._on_select_finalize, useblit=True, button=[1], minspanx=5, minspany=5, spancoords='pixels', interactive=True, props=props)
         elif self.current_shape_mode == "circle":
-            self.selector = EllipseSelector(
-                self.ax_ref, self._on_select_finalize,
-                useblit=True, button=[1], minspanx=5, minspany=5,
-                spancoords='pixels', interactive=True, props=props
-            )
+            self.selector = EllipseSelector(self.ax_ref, self._on_select_finalize, useblit=True, button=[1], minspanx=5, minspany=5, spancoords='pixels', interactive=True, props=props)
         elif self.current_shape_mode == "polygon":
-            self.selector = PolygonSelector(
-                self.ax_ref, self._on_poly_finalize,
-                useblit=True, props=line_props
-            )
+            self.selector = PolygonSelector(self.ax_ref, self._on_poly_finalize, useblit=True, props=line_props)
 
         if self.selector:
             self.selector.set_active(True)
             self.app.root.config(cursor="cross")
-            
             if self.current_shape_mode in ["rect", "circle"]:
-                self.drag_cid = self.app.plot_mgr.canvas.mpl_connect(
-                    'motion_notify_event', self._on_drag_update
-                )
+                self.drag_cid = self.app.plot_mgr.canvas.mpl_connect('motion_notify_event', self._on_drag_update)
 
     def _stop_selector(self):
+        if self.btn_draw_ref:
+            self.btn_draw_ref.state(['!selected'])
+
         if self.drag_cid:
             self.app.plot_mgr.canvas.mpl_disconnect(self.drag_cid)
             self.drag_cid = None
-            
         if self.selector:
             self.selector.set_active(False)
             self.selector.set_visible(False)
@@ -187,102 +182,191 @@ class RoiManager:
         xmin, xmax, ymin, ymax = extents
         if abs(xmax - xmin) < 1.0 or abs(ymax - ymin) < 1.0: return False
         
-        if self.current_shape_mode == "rect":
-            params = (xmin, ymin, xmax-xmin, ymax-ymin)
+        if self.current_shape_mode == "rect": params = (xmin, ymin, xmax-xmin, ymax-ymin)
         elif self.current_shape_mode == "circle":
-            w = xmax - xmin; h = ymax - ymin
-            cx = xmin + w/2; cy = ymin + h/2
+            w = xmax - xmin; h = ymax - ymin; cx = xmin + w/2; cy = ymin + h/2
             params = ((cx, cy), w, h)
         else: return False
 
         mask = self._generate_mask(self.current_shape_mode, params)
         if mask is None: return False
-        
         next_id = len(self.roi_list) + 1
         color = ROI_COLORS[(next_id - 1) % len(ROI_COLORS)]
-        
-        self.temp_roi = {
-            'type': self.current_shape_mode, 'params': params,
-            'mask': mask, 'color': color, 'id_display': next_id
-        }
+        self.temp_roi = {'type': self.current_shape_mode, 'params': params, 'mask': mask, 'color': color, 'id_display': next_id}
         return True
 
     def _on_drag_update(self, event):
         if not self.selector or not self.selector.active: return
         if not event.inaxes: return
         if not self.app.live_plot_var.get(): return
-        
         now = time.time()
         if now - self.last_drag_time < 0.1: return
         if self.is_calculating: return
         self.last_drag_time = now
-        
         try:
-            if self._update_temp_roi_data(self.selector.extents):
-                self._trigger_plot()
-        except Exception: pass
+            if self._update_temp_roi_data(self.selector.extents): self._trigger_plot()
+        except Exception as e: print(f"Drag error: {e}")
 
     def _on_select_finalize(self, eclick, erelease):
         try:
             if self._update_temp_roi_data(self.selector.extents):
                 if self.app.live_plot_var.get(): self._trigger_plot()
-        except Exception: pass
+        except Exception as e: print(f"Finalize error: {e}")
 
     def _on_poly_finalize(self, verts):
         mask = self._generate_mask("polygon", verts)
+        if mask is None: return
         next_id = len(self.roi_list) + 1
         color = ROI_COLORS[(next_id - 1) % len(ROI_COLORS)]
         self.temp_roi = {'type': "polygon", 'params': verts, 'mask': mask, 'color': color, 'id_display': next_id}
         self._commit_temp_roi()
 
+    # [修改 2] 核心修改：创建高对比度 ROI (填充层 + 白色实线层 + 黑色虚线层)
+    def _create_high_contrast_roi(self, rtype, params, color):
+        fill_alpha = 0.6 # 提高填充不透明度
+        patches = []
+        
+        if rtype == "rect":
+            x, y, w, h = params
+            # 1. 填充层 (无边框)
+            patches.append(Rectangle((x, y), w, h, linewidth=0, facecolor=color, alpha=fill_alpha))
+            # 2. 白色底边框 (较粗实线)
+            patches.append(Rectangle((x, y), w, h, linewidth=3, edgecolor='white', facecolor='none', linestyle='-'))
+            # 3. 黑色顶边框 (较细虚线)
+            patches.append(Rectangle((x, y), w, h, linewidth=2, edgecolor='black', facecolor='none', linestyle='--'))
+            
+        elif rtype == "circle":
+            center, w, h = params
+            # 1. 填充层
+            patches.append(Ellipse(center, w, h, linewidth=0, facecolor=color, alpha=fill_alpha))
+            # 2. 白色底边框
+            patches.append(Ellipse(center, w, h, linewidth=3, edgecolor='white', facecolor='none', linestyle='-'))
+            # 3. 黑色顶边框
+            patches.append(Ellipse(center, w, h, linewidth=2, edgecolor='black', facecolor='none', linestyle='--'))
+            
+        elif rtype == "polygon":
+            # 1. 填充层
+            patches.append(Polygon(params, linewidth=0, facecolor=color, alpha=fill_alpha, closed=True))
+            # 2. 白色底边框
+            patches.append(Polygon(params, linewidth=3, edgecolor='white', facecolor='none', linestyle='-', closed=True))
+            # 3. 黑色顶边框
+            patches.append(Polygon(params, linewidth=2, edgecolor='black', facecolor='none', linestyle='--', closed=True))
+            
+        # 将所有 patch 添加到绘图区
+        for p in patches:
+            self.ax_ref.add_patch(p)
+            
+        return patches # 返回 patch 组
+
     def _commit_temp_roi(self):
         if not self.temp_roi: return
         t = self.temp_roi
-        patch = None
-        if t['type'] == "rect":
-            xmin, ymin, w, h = t['params']
-            patch = Rectangle((xmin, ymin), w, h, linewidth=2, edgecolor='black', linestyle='--', facecolor=t['color'], alpha=0.3)
-        elif t['type'] == "circle":
-            center, w, h = t['params']
-            patch = Ellipse(center, w, h, linewidth=2, edgecolor='black', linestyle='--', facecolor=t['color'], alpha=0.3)
-        elif t['type'] == "polygon":
-            patch = Polygon(t['params'], linewidth=2, edgecolor='black', linestyle='--', facecolor=t['color'], alpha=0.3, closed=True)
-            
-        if patch:
-            self.ax_ref.add_patch(patch)
-            self.roi_list.append({'type': t['type'], 'patch': patch, 'mask': t['mask'], 'color': t['color'], 'id': len(self.roi_list) + 1})
-            
+        
+        # 使用新方法创建高对比度 patch 组
+        patch_group = self._create_high_contrast_roi(t['type'], t['params'], t['color'])
+        
+        if patch_group:
+            # 存入列表的是 patch 组，而不是单个 patch
+            self.roi_list.append({
+                'type': t['type'], 
+                'patch_group': patch_group, # [修改] 存储 patch 列表
+                'mask': t['mask'], 
+                'color': t['color'], 
+                'id': len(self.roi_list) + 1,
+                'params': t['params']
+            })
+        
         self.temp_roi = None
         self.app.plot_mgr.canvas.draw_idle()
         if self.app.live_plot_var.get(): self._trigger_plot()
 
-    def _trigger_plot(self):
-        self.plot_curve(
-            interval=self.app.var_interval.get(),
-            unit=self.app.combo_unit.get(),
-            is_log=self.app.log_var.get(),
-            do_norm=self.app.norm_var.get(),
-            int_thresh=self.app.var_int_thresh.get(),
-            ratio_thresh=self.app.var_ratio_thresh.get()
-        )
+    def save_rois(self, filepath):
+        if self.temp_roi: self._commit_temp_roi()
+        self._stop_selector()
+
+        if not self.roi_list:
+            messagebox.showwarning("Save ROI", "No ROIs to save.")
+            return
+        
+        data_to_save = []
+        for roi in self.roi_list:
+            item = {"type": roi['type'], "color": roi['color'], "id": roi['id']}
+            if roi['type'] == "polygon": item["params"] = np.array(roi['params']).tolist() 
+            else: item["params"] = roi['params']
+            data_to_save.append(item)
+            
+        try:
+            with open(filepath, 'w') as f: json.dump(data_to_save, f, indent=4)
+            messagebox.showinfo("Success", f"Saved {len(data_to_save)} ROIs.")
+        except Exception as e: messagebox.showerror("Error", f"Failed to save ROIs:\n{e}")
+
+    def load_rois(self, filepath):
+        if self.app.data1 is None:
+            messagebox.showerror("Error", "Please load an image first.")
+            return
+        try:
+            with open(filepath, 'r') as f: data_loaded = json.load(f)
+            if not isinstance(data_loaded, list): raise ValueError("Invalid format.")
+
+            self.clear_all() 
+            
+            for item in data_loaded:
+                rtype = item["type"]
+                params = item["params"]
+                color = item.get("color", ROI_COLORS[0])
+                
+                if rtype == "polygon": params = np.array(params)
+                else:
+                    params = tuple(params)
+                    if rtype == "circle": params = (tuple(params[0]), params[1], params[2])
+
+                mask = self._generate_mask(rtype, params)
+                if mask is None: continue
+                
+                # [修改 4] 加载时也使用高对比度样式
+                patch_group = self._create_high_contrast_roi(rtype, params, color)
+                
+                if patch_group:
+                    self.roi_list.append({
+                        'type': rtype,
+                        'patch_group': patch_group, # [修改]
+                        'mask': mask,
+                        'color': color,
+                        'id': len(self.roi_list) + 1,
+                        'params': params
+                    })
+            
+            self.app.plot_mgr.canvas.draw_idle()
+            messagebox.showinfo("Success", f"Loaded {len(self.roi_list)} ROIs.")
+        except Exception as e: messagebox.showerror("Error", f"Failed to load ROIs:\n{e}")
 
     def _generate_mask(self, shape_type, params):
         if self.app.data1 is None: return None
         h, w = self.app.data1.shape[1], self.app.data1.shape[2]
-        if shape_type == "rect":
-            xmin, ymin, width, height = params
-            y, x = np.ogrid[:h, :w]
-            return (x >= xmin) & (x <= xmin + width) & (y >= ymin) & (y <= ymin + height)
-        elif shape_type == "circle":
-            center, width, height = params
-            y, x = np.ogrid[:h, :w]
-            return (((x - center[0]) / (width/2))**2 + ((y - center[1]) / (height/2))**2) <= 1
-        elif shape_type == "polygon":
-            verts = params
-            y, x = np.mgrid[:h, :w]
-            points = np.vstack((x.ravel(), y.ravel())).T
-            mpl_path = MplPath(verts)
-            return mpl_path.contains_points(points).reshape(h, w)
+        try:
+            if shape_type == "rect":
+                xmin, ymin, width, height = params
+                y, x = np.ogrid[:h, :w]
+                # 增加边界检查，防止浮点数误差导致 mask 全 false
+                x_start, x_end = int(max(0, xmin)), int(min(w, xmin + width))
+                y_start, y_end = int(max(0, ymin)), int(min(h, ymin + height))
+                if x_start >= x_end or y_start >= y_end: return None
+                mask = np.zeros((h, w), dtype=bool)
+                mask[y_start:y_end, x_start:x_end] = True
+                return mask
+            elif shape_type == "circle":
+                center, width, height = params
+                y, x = np.ogrid[:h, :w]
+                return (((x - center[0]) / (width/2))**2 + ((y - center[1]) / (height/2))**2) <= 1
+            elif shape_type == "polygon":
+                verts = params
+                y, x = np.mgrid[:h, :w]
+                points = np.vstack((x.ravel(), y.ravel())).T
+                mpl_path = MplPath(verts)
+                return mpl_path.contains_points(points).reshape(h, w)
+        except Exception as e:
+             print(f"Mask generation error: {e}")
+             return None
         return None
 
     def remove_last(self):
@@ -291,36 +375,36 @@ class RoiManager:
             self._stop_selector()
         elif self.roi_list:
             item = self.roi_list.pop()
-            try: item['patch'].remove()
-            except: pass
+            # [修改 3] 移除 patch 组中的所有 patch
+            if 'patch_group' in item:
+                for p in item['patch_group']:
+                    try: p.remove()
+                    except: pass
             self.app.plot_mgr.canvas.draw_idle()
         if self.app.live_plot_var.get(): self._trigger_plot()
 
     def clear_all(self):
         self._stop_selector()
         self.temp_roi = None
-        for item in self.roi_list:
-            try: item['patch'].remove()
-            except: pass
+        # [修改 3] 清理数据结构
         self.roi_list = []
+        # 彻底清理 Ax 上的所有残留对象，确保干净
         if self.ax_ref:
             for p in list(self.ax_ref.patches): p.remove()
             for l in list(self.ax_ref.lines): l.remove()
-        if self.app.plot_mgr:
-            self.app.plot_mgr.canvas.draw_idle()
-        if self.app.live_plot_var.get() and self.plot_ax:
-            self.plot_ax.clear(); self.plot_canvas.draw()
+        if self.app.plot_mgr: self.app.plot_mgr.canvas.draw_idle()
+
+    def _trigger_plot(self):
+        if not self.is_calculating: self.plot_curve()
 
     def plot_curve(self, interval=1.0, unit='s', is_log=False, do_norm=False, int_thresh=0, ratio_thresh=0):
-        if not self.roi_list and not self.temp_roi: 
-            if self.plot_ax: 
-                self.plot_ax.clear()
-                self.plot_canvas.draw()
-            return
+        if not self.roi_list and not self.temp_roi: return
         if self.is_calculating: return
 
         data_num, data_den, bg_num, bg_den = self.app.get_active_data()
         if data_num is None: return
+        
+        # 简单的防抖
         self.is_calculating = True
         
         data_aux_list = getattr(self.app, 'data_aux', [])
@@ -329,7 +413,8 @@ class RoiManager:
         task_list = []
         for r in self.roi_list:
             task_list.append({'mask': r['mask'], 'color': r['color'], 'id': r['id']})
-        if self.temp_roi and self.temp_roi['mask'] is not None:
+        # 仅当 temp_roi 具有有效 mask 时才添加
+        if self.temp_roi and self.temp_roi.get('mask') is not None:
             task_list.append({'mask': self.temp_roi['mask'], 'color': self.temp_roi['color'], 'id': self.temp_roi['id_display']})
 
         if not task_list:
@@ -347,25 +432,22 @@ class RoiManager:
             
             def calc_dff(arr):
                 valid_mask = arr > 1e-6
-                if not np.any(valid_mask): 
-                    return np.zeros_like(arr)
+                if not np.any(valid_mask): return np.zeros_like(arr)
                 valid_vals = arr[valid_mask]
                 thresh_5 = np.percentile(valid_vals, 5)
                 baseline_vals = valid_vals[valid_vals <= thresh_5]
                 f0 = np.mean(baseline_vals) if len(baseline_vals) > 0 else np.mean(valid_vals)
-                if f0 > 1e-6:
-                    return (arr - f0) / f0
-                else:
-                    return np.zeros_like(arr)
+                if f0 > 1e-6: return (arr - f0) / f0
+                else: return np.zeros_like(arr)
 
             for item in task_list:
                 mask = item['mask']
+                if mask is None or np.sum(mask) == 0:
+                     means = np.zeros(data_num.shape[0])
+                     results.append({'id': item['id'], 'color': item['color'], 'means': means, 'means_num': means, 'means_den': means, 'means_aux': []})
+                     continue
+
                 y_idxs, x_idxs = np.where(mask)
-                
-                if len(y_idxs) == 0:
-                    means = np.zeros(data_num.shape[0])
-                    results.append({'id': item['id'], 'color': item['color'], 'means': means, 'means_num': means, 'means_den': means, 'means_aux': []})
-                    continue
                 
                 roi_num = data_num[:, y_idxs, x_idxs].astype(np.float32) - bg_num
                 roi_den = data_den[:, y_idxs, x_idxs].astype(np.float32) - bg_den
@@ -395,8 +477,7 @@ class RoiManager:
                     roi_aux = np.clip(roi_aux, 0, None)
                     m = np.nanmean(roi_aux, axis=1)
                     m = np.nan_to_num(m, nan=0.0)
-                    if do_norm:
-                        m = calc_dff(m)
+                    if do_norm: m = calc_dff(m)
                     means_aux.append(m)
 
                 if do_norm:
@@ -420,230 +501,15 @@ class RoiManager:
             elif unit == "h": mult = 1.0/3600.0
             times = np.arange(len(results[0]['means'])) * interval * mult
             
-            self.app.root.after(0, lambda: self._show_window(times, results, unit, is_log, do_norm))
+            try: mode_var = self.app.ratio_mode_var.get()
+            except: mode_var = "c1_c2"
+            labels = ("Ch1", "Ch2") if mode_var == "c1_c2" else ("Ch2", "Ch1")
+
+            self.app.root.after(0, lambda: self.plot_window_controller.update_data(
+                times, results, unit, is_log, do_norm, labels
+            ))
             
         except Exception as e:
             print(f"Calc Error: {e}")
         finally:
             self.is_calculating = False
-
-    def _switch_plot_mode(self, mode):
-        self.plot_mode = mode
-        self._refresh_plot_canvas()
-
-    def _show_window(self, x, series_list, unit, is_log, do_norm):
-        self.cached_x = x
-        self.cached_series = series_list
-        self.cached_unit = unit
-        self.cached_is_log = is_log
-        self.cached_do_norm = do_norm
-
-        if self.plot_window is None or not Toplevel.winfo_exists(self.plot_window):
-            self.plot_window = Toplevel(self.app.root)
-            self.plot_window.title(f"ROI Analysis")
-            self.plot_window.geometry("750x550") 
-            
-            bf = ttk.Frame(self.plot_window, style="White.TFrame", padding=10)
-            bf.pack(side="bottom", fill="x")
-            
-            bf_mode = ttk.Frame(bf, style="White.TFrame")
-            bf_mode.pack(side="top", fill="x", pady=(0, 5))
-            
-            ttk.Label(bf_mode, text="View:", style="White.TLabel").pack(side="left")
-            
-            self.btn_mode_ratio = ttk.Button(bf_mode, text="Ratio", command=lambda: self._switch_plot_mode("ratio"), width=8)
-            self.btn_mode_ratio.pack(side="left", padx=2)
-            
-            self.btn_mode_num = ttk.Button(bf_mode, text="Num", command=lambda: self._switch_plot_mode("num"), width=12)
-            self.btn_mode_num.pack(side="left", padx=2)
-            
-            self.btn_mode_den = ttk.Button(bf_mode, text="Den", command=lambda: self._switch_plot_mode("den"), width=12)
-            self.btn_mode_den.pack(side="left", padx=2)
-            
-            self.btn_mode_combo = ttk.Button(bf_mode, text="Combo (All)", command=lambda: self._switch_plot_mode("combo"), width=12)
-            self.btn_mode_combo.pack(side="left", padx=(10, 2))
-
-            bf_copy = ttk.Frame(bf, style="White.TFrame")
-            bf_copy.pack(side="top", fill="x")
-            
-            self.btn_copy_all = ttk.Button(bf_copy, text="📋 Copy All Data")
-            self.btn_copy_all.pack(side="left", padx=5)
-            self.btn_copy_y = ttk.Button(bf_copy, text="🔢 Copy Y-Only")
-            self.btn_copy_y.pack(side="left", padx=5)
-
-            fig = plt.Figure(figsize=(5, 4), dpi=100)
-            fig.patch.set_facecolor('#FFFFFF')
-            self.plot_ax = fig.add_subplot(111)
-            self.plot_canvas = FigureCanvasTkAgg(fig, master=self.plot_window)
-            self.plot_canvas.get_tk_widget().pack(side="top", fill="both", expand=True, padx=10, pady=10)
-
-        try: mode_var = self.app.ratio_mode_var.get()
-        except: mode_var = "c1_c2"
-        
-        txt_num = "Ch1 (Num)" if mode_var == "c1_c2" else "Ch2 (Num)"
-        txt_den = "Ch2 (Den)" if mode_var == "c1_c2" else "Ch1 (Den)"
-        
-        if self.btn_mode_num: self.btn_mode_num.config(text=txt_num)
-        if self.btn_mode_den: self.btn_mode_den.config(text=txt_den)
-        
-        try:
-            style_active = "Success.TButton"
-            style_normal = "TButton"
-            self.btn_mode_ratio.config(style=style_active if self.plot_mode=="ratio" else style_normal)
-            self.btn_mode_num.config(style=style_active if self.plot_mode=="num" else style_normal)
-            self.btn_mode_den.config(style=style_active if self.plot_mode=="den" else style_normal)
-            self.btn_mode_combo.config(style=style_active if self.plot_mode=="combo" else style_normal)
-        except: pass
-
-        self.btn_copy_all.configure(command=lambda: self._copy_multi_data(self.btn_copy_all, "📋 Copy All Data", x, series_list, mode="all"))
-        self.btn_copy_y.configure(command=lambda: self._copy_multi_data(self.btn_copy_y, "🔢 Copy Y-Only", x, series_list, mode="y_only"))
-
-        self._refresh_plot_canvas()
-
-    def _refresh_plot_canvas(self):
-        if not self.plot_ax: return
-        
-        if self.plot_ax_right is not None:
-            self.plot_ax_right.remove()
-            self.plot_ax_right = None
-        
-        x = self.cached_x
-        series_list = self.cached_series
-        unit = self.cached_unit
-        is_log = self.cached_is_log
-        do_norm = self.cached_do_norm
-        
-        self.plot_ax.clear()
-        
-        # Determine mapping for Legend
-        try: mode_var = self.app.ratio_mode_var.get()
-        except: mode_var = "c1_c2"
-        
-        if mode_var == "c1_c2":
-            label_num_name = "Ch1"
-            label_den_name = "Ch2"
-        else:
-            label_num_name = "Ch2"
-            label_den_name = "Ch1"
-        
-        if self.plot_mode == "combo":
-            use_dual_axis = not do_norm
-            
-            if use_dual_axis:
-                self.plot_ax_right = self.plot_ax.twinx()
-            
-            lines = []
-            
-            for s in series_list:
-                # Ratio
-                l1, = self.plot_ax.plot(x, s['means'], color=s['color'], linestyle='-', linewidth=2, label=f"ROI {s['id']} Ratio")
-                lines.append(l1)
-                
-                target_ax = self.plot_ax_right if use_dual_axis else self.plot_ax
-                
-                # Num -> Mapped to ChX
-                l2, = target_ax.plot(x, s['means_num'], color=s['color'], linestyle='--', linewidth=1, alpha=0.7, label=f"ROI {s['id']} {label_num_name}")
-                lines.append(l2)
-                
-                # Den -> Mapped to ChY
-                l3, = target_ax.plot(x, s['means_den'], color=s['color'], linestyle=':', linewidth=1, alpha=0.7, label=f"ROI {s['id']} {label_den_name}")
-                lines.append(l3)
-                
-                if 'means_aux' in s:
-                    for i, aux_data in enumerate(s['means_aux']):
-                        # Aux channels start from Ch3 if we assume Ch1/Ch2 are used
-                        # But without explicit index tracking, just label Aux 1, Aux 2
-                        l_aux, = target_ax.plot(x, aux_data, color='gray', linestyle='-.', linewidth=1, alpha=0.5, 
-                                                label=f"ROI {s['id']} Aux {i+1}")
-                        lines.append(l_aux)
-            
-            self.plot_ax.set_ylabel(r"$\Delta R / R_0$" if do_norm else "Ratio")
-            if use_dual_axis:
-                self.plot_ax_right.set_ylabel("Intensity (Raw)")
-            
-            self.plot_ax.set_xlabel(f"Time ({unit})")
-            labels = [l.get_label() for l in lines]
-            self.plot_ax.legend(lines, labels, loc='best', fontsize='small')
-            
-            self.plot_ax.grid(True, which="both", alpha=0.3)
-            self.plot_canvas.figure.tight_layout()
-            self.plot_canvas.draw()
-            return
-
-        # Single Modes
-        data_key = 'means'
-        if self.plot_mode == "num": data_key = 'means_num'
-        elif self.plot_mode == "den": data_key = 'means_den'
-        
-        for s in series_list:
-            y_data = s[data_key]
-            self.plot_ax.plot(x, y_data, color=s['color'], label=f"ROI {s['id']}", linewidth=1.5)
-            
-        self.plot_ax.set_yscale('log' if (is_log and self.plot_mode=="ratio") else 'linear')
-        
-        if self.plot_mode == "ratio":
-            if do_norm: ylabel = r"$\Delta R / R_0$"
-            else: ylabel = f"Ratio ({label_num_name}/{label_den_name})"
-        elif self.plot_mode == "num":
-            if do_norm: ylabel = r"$\Delta F / F_0$ (" + label_num_name + ")"
-            else: ylabel = f"Intensity ({label_num_name})"
-        elif self.plot_mode == "den":
-            if do_norm: ylabel = r"$\Delta F / F_0$ (" + label_den_name + ")"
-            else: ylabel = f"Intensity ({label_den_name})"
-            
-        self.plot_ax.set_ylabel(ylabel)
-        self.plot_ax.set_xlabel(f"Time ({unit})")
-        self.plot_ax.legend()
-        self.plot_ax.grid(True, which="both", alpha=0.3)
-        self.plot_canvas.figure.tight_layout()
-        self.plot_canvas.draw()
-        self.plot_window.lift()
-
-    def _copy_multi_data(self, btn_widget, original_text, x, series_list, mode="all"):
-        if self.plot_mode == "combo":
-            header = "Time"
-            for s in series_list:
-                header += f"\tROI_{s['id']}_Ratio\tROI_{s['id']}_Num\tROI_{s['id']}_Den"
-                if 'means_aux' in s:
-                    for i in range(len(s['means_aux'])):
-                        header += f"\tROI_{s['id']}_Aux{i+1}"
-            header += "\n"
-            
-            content = ""
-            for i in range(len(x)):
-                row = f"{x[i]:.3f}"
-                for s in series_list:
-                    row += f"\t{s['means'][i]:.5f}\t{s['means_num'][i]:.5f}\t{s['means_den'][i]:.5f}"
-                    if 'means_aux' in s:
-                        for aux_val in s['means_aux']:
-                            row += f"\t{aux_val[i]:.5f}"
-                content += row + "\n"
-        else:
-            data_key = 'means'
-            if self.plot_mode == "num": data_key = 'means_num'
-            elif self.plot_mode == "den": data_key = 'means_den'
-
-            if mode == "all":
-                header = "Time" + "".join([f"\tROI_{s['id']}" for s in series_list]) + "\n"
-            else:
-                header = "\t".join([f"ROI_{s['id']}" for s in series_list]) + "\n"
-
-            content = ""
-            for i in range(len(x)):
-                row = ""
-                if mode == "all":
-                    row += f"{x[i]:.3f}\t"
-                vals = [f"{s[data_key][i]:.5f}" for s in series_list]
-                row += "\t".join(vals)
-                content += row + "\n"
-            
-        self.app.root.clipboard_clear()
-        self.app.root.clipboard_append(header + content)
-        
-        def restore():
-            try:
-                btn_widget.configure(text=original_text, state="normal")
-            except: pass
-            
-        btn_widget.configure(text="✔ Copied!", state="disabled")
-        self.app.root.after(1000, restore)

@@ -48,7 +48,7 @@ LANG_MAP = {
     "lbl_roi_tools": {"cn": "🛠️ ROI & 测量", "en": "🛠️ ROI & Measurement"},
     "lbl_export": {"cn": "💾 数据导出", "en": "💾 Data Export"},
     "lbl_settings": {"cn": "⚙️ 其他设置", "en": "⚙️ Settings"},
-    "btn_draw": {"cn": "✏️ 新建 ROI", "en": "✏️ New ROI"},
+    "btn_draw": {"cn": "✏️ 新建 (Ctrl+T)", "en": "✏️ New (Ctrl+T)"},
     "btn_clear": {"cn": "🗑️ 清除", "en": "🗑️ Clear"},
     "btn_plot": {"cn": "📈 生成曲线", "en": "📈 Plot Curve"},
     "btn_save_stack": {"cn": "💾 保存序列 (Stack)", "en": "💾 Save Stack"},
