@@ -52,7 +52,7 @@ We built RIA so you can take your TIFF stacks, go to a coffee shop (or just your
 RatioImagingAnalyzer/
 ├── data/               # Sample TIFFs so you can try it out immediately
 ├── paper/              # JOSS submission files
-├── src/                # The actual code
+├── src/ria_gui         # The actual code
 │   ├── main.py         # Start here
 │   ├── gui.py          # The frontend logic
 │   ├── processing.py   # The math/algorithm heavy lifting
@@ -63,7 +63,7 @@ RatioImagingAnalyzer/
 
 ## 🚀 Installation
 
-### Option 0: Install via PyPI (Recommended)
+### Option 1: Install via PyPI (Recommended for Pythoners)
 
 RIA is available on the Python Package Index. Open your terminal and run:
 
@@ -76,7 +76,7 @@ ria
 ```
 
 
-### Option 1: Running from Source (Recommended for Developers/Reviewers)
+### Option 2: Running from Source (Recommended for Developers/Reviewers)
 
 1. **Clone the repository:**
    ```bash
@@ -94,10 +94,10 @@ ria
    The source code is located in the `src` directory:
 
    ```bash
-   python src/main.py
+   python src/ria_gui/main.py
    ```
 
-### Option 2: Standalone Executable (For End Users)
+### Option 3: Standalone Executable (For End Users)
 
 Check the [Releases](https://github.com/Epivitae/RatioImagingAnalyzer/releases) page to download the latest compiled `.exe` file for Windows. No Python installation is required.
 
@@ -105,19 +105,29 @@ Check the [Releases](https://github.com/Epivitae/RatioImagingAnalyzer/releases) 
 
 To test the software, you can use the sample data provided in the `data/` directory.
 
-1. **Launch RIA** (`python src/main.py`).
+1. **Launch RIA** : 
+   * pip: `ria` (pip), 
+   * git clone: `python src/ria_gui/main.py`exe
+   * exe: doble click only!
 2. **Load Files**:
+   1. Separate Files model:
    * Click **📂 Ch1** and select `data/C1.tif`.
    * Click **📂 Ch2** and select `data/C2.tif`.
    * Click **🚀 Load & Analyze**.
-3. **Adjust Parameters**:
+   2. Single File with Dual Channels:
+   * Select Dual-Ch File.
+   * Click **🚀 Load & Analyze**.
+   * **Confirm** the channels arrangement.
+3. **Run Motion Correction** if needed.
+
+4. **Adjust Parameters**:
    * Set **BG %** (Background Subtraction) to ~5-10%.
    * Adjust **Int. Min** (Intensity Threshold) to remove background noise.
    * *(Optional)* Enable **Log Scale** if the dynamic range is large.
-4. **Analyze**:
-   * Click **✏️ Draw ROI** in the "ROI & Measurement" panel.
-   * Draw a rectangle on the cell of interest.
-   * A curve window will pop up showing the ratio change over time.
+5. **Analyze**:
+   * Click **✏️ Draw ROI** or use `Ctrl + T` as a short-cut in the "ROI & Measurement" panel.
+   * Draw a ROI on the cell of interest.
+   * Cilck **Plot Curve** and **Live Monitor**, a curve window will pop up showing the ratio/intensity change over time.
 
 ## 🧪 Testing
 
