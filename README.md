@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="/src/ria_gui/assets/app_ico.png" width="120" alt="Logo">
+  <img src="https://raw.githubusercontent.com/Epivitae/RatioImagingAnalyzer/main/src/ria_gui/assets/app_ico.png" width="120" alt="Logo">
 
   <h1>Ratio Imaging Analyzer (RIA / 莉丫)</h1>
 
@@ -32,7 +32,7 @@ Ratiometric imaging (like FRET or sensors for Tryptophan/pH/Ca²⁺) is amazing 
 We built RIA so you can take your TIFF stacks, go to a coffee shop (or just your desk), and run rigorous analysis on your own laptop—no coding required.
 
 <p align="center">
-  <img src="/src/ria_gui/assets/figure/analysis.gif" width="70%" alt="RIA Interface showing trace analysis">
+  <img src="https://raw.githubusercontent.com/Epivitae/RatioImagingAnalyzer/main/src/ria_gui/assets/figure/analysis.gif" width="70%" alt="RIA Interface showing trace analysis">
 </p>
 [Image of fluorescence ratiometric imaging process diagram]
 
