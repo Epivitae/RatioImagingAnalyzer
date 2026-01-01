@@ -71,7 +71,7 @@ def cleanup_artifacts():
             shutil.rmtree(folder, ignore_errors=True)
 
 def main():
-    console.print(Panel.fit("[bold magenta]RIA / 莉丫[/bold magenta] - 终极自动化发布系统", border_style="magenta"))
+    console.print(Panel.fit("[bold magenta]RIA / 莉丫[/bold magenta] - PyPI-GitHub 发布系统", border_style="magenta"))
 
     # 1. 预检
     with console.status("[bold green]正在同步云端版本...") as status:
