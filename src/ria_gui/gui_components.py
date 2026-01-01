@@ -22,22 +22,56 @@ ROI_COLORS = ['#FF3333', '#33FF33', '#3388FF', '#FFFF33', '#FF33FF', '#33FFFF', 
 
 # ... (PlotManager 类保持不变，此处省略) ...
 class PlotManager:
-    # ... (保持原样) ...
-    def __init__(self, parent_frame):
-        self.fig = plt.Figure(figsize=(6, 5), dpi=100)
-        self.fig.patch.set_facecolor('#FFFFFF')
-        self.ax = self.fig.add_subplot(111)
-        self.ax.axis('off')
+    def __init__(self, parent_frame, app_instance):
+        """
+        初始化绘图管理器
+        :param parent_frame: 用于放置 Canvas 的 Tkinter Frame
+        :param app_instance: 主程序 App 实例 (用于访问 .root, .data 等)
+        """
+        self.parent = parent_frame
+        self.app = app_instance
+        self.selector = None
+        self.roi_list = [] 
+        self.temp_roi = None
         
-        self.canvas = FigureCanvasTkAgg(self.fig, master=parent_frame)
+        # Lazy import
+        try:
+             from .plot_window import ROIPlotWindow
+        except ImportError:
+             from plot_window import ROIPlotWindow
+        
+        # 修复点：现在 self.app 是 App 实例，所以可以访问 .root
+        self.plot_window_controller = ROIPlotWindow(self.app.root)
+        
+        self.is_calculating = False
+        self.current_shape_mode = "rect" 
+        self.is_drawing_bg = False
+        self.ax_ref = None
+        
+        self.drag_cid = None
+        self.last_drag_time = 0
+        self.btn_draw_ref = None
+
+        # --- 初始化 Matplotlib ---
+        self.fig = plt.Figure(figsize=(5, 5), dpi=100)
+        self.fig.patch.set_facecolor('#FFFFFF') # 设置背景白
+        
+        # 修复点：master 使用传入的 parent_frame
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.parent)
         self.canvas_widget = self.canvas.get_tk_widget()
         self.canvas_widget.pack(fill="both", expand=True)
         
+        # 初始化空白 Ax
+        self.ax = self.fig.add_subplot(111)
+        self.ax.axis('off')
         self.im_object = None
         self.cbar = None
-        self.toolbar = None
 
     def add_toolbar(self, parent_frame):
+        # 清理旧的 toolbar (如果存在)
+        for child in parent_frame.winfo_children():
+            child.destroy()
+            
         self.toolbar = NavigationToolbar2Tk(self.canvas, parent_frame)
         self.toolbar.config(background="#FFFFFF")
         self.toolbar._message_label.config(background="#FFFFFF")
@@ -135,22 +169,30 @@ class RoiManager:
     def cancel_drawing(self):
         self._stop_selector()
 
-    def start_drawing(self):
+    def start_drawing(self, mode="rect", is_background=False): # [Updated]
         if not self.ax_ref: return
+        
+        self.set_mode(mode) # Reset existing modes
+        self.is_drawing_bg = is_background # [NEW] Set flag
+        
         if self.temp_roi: self._commit_temp_roi()
         self._stop_selector() 
         
         if self.btn_draw_ref:
             self.btn_draw_ref.state(['selected']) 
             
-        next_id = len(self.roi_list) + 1
-        color_idx = (next_id - 1) % len(ROI_COLORS)
-        color = ROI_COLORS[color_idx]
-        
-        # [修改 1] 交互绘制时的样式：提高不透明度(alpha 0.5)，加粗线条(linewidth 2)
-        props = dict(facecolor=color, edgecolor='black', alpha=0.5, linestyle='--', linewidth=2, fill=True)
-        line_props = dict(color='black', linestyle='--', linewidth=2, alpha=0.8)
+        # [NEW] Style logic: Gray for BG, Color for normal ROIs
+        if self.is_drawing_bg:
+            props = dict(facecolor='black', edgecolor='gray', alpha=0.3, linestyle=':', linewidth=1, fill=True)
+            line_props = dict(color='gray', linestyle=':', linewidth=1, alpha=0.8)
+        else:
+            next_id = len(self.roi_list) + 1
+            color_idx = (next_id - 1) % len(ROI_COLORS)
+            color = ROI_COLORS[color_idx]
+            props = dict(facecolor=color, edgecolor='black', alpha=0.5, linestyle='--', linewidth=2, fill=True)
+            line_props = dict(color='black', linestyle='--', linewidth=2, alpha=0.8)
 
+        # Start Selector (Only Rect usually makes sense for BG, but others can work)
         if self.current_shape_mode == "rect":
             self.selector = RectangleSelector(self.ax_ref, self._on_select_finalize, useblit=True, button=[1], minspanx=5, minspany=5, spancoords='pixels', interactive=True, props=props)
         elif self.current_shape_mode == "circle":
@@ -161,7 +203,8 @@ class RoiManager:
         if self.selector:
             self.selector.set_active(True)
             self.app.root.config(cursor="cross")
-            if self.current_shape_mode in ["rect", "circle"]:
+            # Only bind drag for Normal ROIs to show live plot, not needed for BG
+            if self.current_shape_mode in ["rect", "circle"] and not self.is_drawing_bg:
                 self.drag_cid = self.app.plot_mgr.canvas.mpl_connect('motion_notify_event', self._on_drag_update)
 
     def _stop_selector(self):
@@ -262,19 +305,31 @@ class RoiManager:
         if not self.temp_roi: return
         t = self.temp_roi
         
-        # 使用新方法创建高对比度 patch 组
+        # [NEW] Intercept Background ROI
+        if self.is_drawing_bg:
+            self._process_background_roi(t)
+            self.temp_roi = None
+            self._stop_selector()
+            self.is_drawing_bg = False # Reset
+            self.app.root.config(cursor="")
+            return
+
+        # Normal ROI Logic
         patch_group = self._create_high_contrast_roi(t['type'], t['params'], t['color'])
         
         if patch_group:
-            # 存入列表的是 patch 组，而不是单个 patch
             self.roi_list.append({
                 'type': t['type'], 
-                'patch_group': patch_group, # [修改] 存储 patch 列表
+                'patch_group': patch_group, 
                 'mask': t['mask'], 
                 'color': t['color'], 
                 'id': len(self.roi_list) + 1,
                 'params': t['params']
             })
+        
+        self.temp_roi = None
+        self.app.plot_mgr.canvas.draw_idle()
+        if self.app.live_plot_var.get(): self._trigger_plot()
         
         self.temp_roi = None
         self.app.plot_mgr.canvas.draw_idle()
@@ -513,3 +568,34 @@ class RoiManager:
             print(f"Calc Error: {e}")
         finally:
             self.is_calculating = False
+
+    def _process_background_roi(self, roi_data):
+        """Calculate mean intensity in the ROI across time and update App."""
+        mask = roi_data['mask']
+        if mask is None: return
+
+        if self.app.data1 is None: return
+
+        # Get Raw Data (Use Time-Average for stability)
+        # Using the raw data1/data2 from app, not the processed ones
+        try:
+            # 1. Calculate Time-Average Image (Collapse time dimension)
+            # This avoids noise from a single frame affecting the whole stack
+            mean_img1 = np.mean(self.app.data1, axis=0) 
+            mean_img2 = np.mean(self.app.data2, axis=0)
+            
+            # 2. Extract mean value within the mask
+            bg_val1 = np.mean(mean_img1[mask])
+            bg_val2 = np.mean(mean_img2[mask])
+            
+            # 3. Send back to App
+            self.app.set_custom_background(float(bg_val1), float(bg_val2))
+            
+            # 4. Clean up visual (Remove the selection box)
+            if self.selector:
+                self.selector.set_visible(False)
+            self.app.plot_mgr.canvas.draw_idle()
+            
+        except Exception as e:
+            print(f"Background Calculation Error: {e}")
+            tk.messagebox.showerror("Error", f"Failed to calc background: {e}")

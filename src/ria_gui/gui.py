@@ -93,6 +93,11 @@ class RatioAnalyzerApp:
         self.cached_bg2 = 0
         self.cached_bg_aux = [] # Backgrounds for aux channels
         
+        # [NEW] Custom Background ROI Variables
+        self.custom_bg1 = 0.0
+        self.custom_bg2 = 0.0
+        self.use_custom_bg_var = tk.BooleanVar(value=False)
+
         # Paths
         self.c1_path = None; self.c2_path = None
         self.dual_path = None
@@ -107,10 +112,21 @@ class RatioAnalyzerApp:
         
         self.root.after(100, self.load_graphics_engine)
 
+
     def setup_shortcuts(self):
+        # ROI Drawing Shortcuts
         self.root.bind("<Control-t>", lambda event: self.roi_mgr.start_drawing())
         self.root.bind("<Control-T>", lambda event: self.roi_mgr.start_drawing())
         self.root.bind("<Escape>", lambda event: self.roi_mgr.cancel_drawing())
+        
+        # Plot Curve Shortcut (Ctrl+P)
+        self.root.bind("<Control-p>", lambda event: self.plot_roi_curve())
+        self.root.bind("<Control-P>", lambda event: self.plot_roi_curve())
+
+        # [NEW] Live Monitor Shortcut (Ctrl+L)
+        # 使用 invoke() 模拟点击，自动处理变量切换和回调执行
+        self.root.bind("<Control-l>", lambda event: self.chk_live.invoke())
+        self.root.bind("<Control-L>", lambda event: self.chk_live.invoke())
 
     def thread_safe_config(self, widget, **kwargs):
         try:
@@ -261,7 +277,10 @@ class RatioAnalyzerApp:
     def load_graphics_engine(self):
         try:
             self.lbl_loading.destroy()
-            self.plot_mgr = PlotManager(self.plot_container)
+            
+            # [修改] 传入 self.plot_container (Frame) 和 self (App实例)
+            self.plot_mgr = PlotManager(self.plot_container, self)
+            
             self.plot_mgr.canvas_widget.bind("<Configure>", self.on_canvas_configure)
             
             if hasattr(self, 'tb_frame_placeholder'):
@@ -274,6 +293,8 @@ class RatioAnalyzerApp:
             
         except Exception as e:
             print(f"Graphics Engine Init Error: {e}")
+            import traceback
+            traceback.print_exc() # 打印完整堆栈以便调试
 
     def setup_file_group(self):
         self.grp_file = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
@@ -337,6 +358,8 @@ class RatioAnalyzerApp:
         self.grp_calc = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
         self.grp_calc.pack(fill="x", pady=(0, 10))
         self.ui_elements["grp_calc"] = self.grp_calc
+        
+        # --- Ratio Mode Selection ---
         f_mode = ttk.Frame(self.grp_calc, style="White.TFrame"); f_mode.pack(fill="x", pady=(0, 5))
         self.lbl_mode = ttk.Label(f_mode, style="White.TLabel"); self.lbl_mode.pack(side="left")
         self.ui_elements["lbl_ratio_mode"] = self.lbl_mode
@@ -344,17 +367,81 @@ class RatioAnalyzerApp:
         self.combo_mode = ttk.Combobox(f_mode, state="readonly", width=18)
         self.combo_mode.pack(side="right", fill="x", expand=True, padx=(5, 0))
         self.combo_mode.bind("<<ComboboxSelected>>", self.on_mode_change)
+        
+        # --- Sliders Variables ---
         self.var_int_thresh = tk.DoubleVar(value=0.0); self.var_ratio_thresh = tk.DoubleVar(value=0.0)
         self.var_smooth = tk.DoubleVar(value=0.0); self.var_bg = tk.DoubleVar(value=5.0)
+        
+        # --- Sliders Creation ---
         self.create_slider(self.grp_calc, "lbl_int_thr", 0, 500, 1, self.var_int_thresh)
         self.create_slider(self.grp_calc, "lbl_ratio_thr", 0, 5.0, 0.1, self.var_ratio_thresh)
         self.create_slider(self.grp_calc, "lbl_smooth", 0, 10, 1, self.var_smooth, True)
         self.create_bg_slider(self.grp_calc, "lbl_bg", 0, 50, self.var_bg)
-        self.log_var = tk.BooleanVar(value=False)
-        self.chk_log = ttk.Checkbutton(self.grp_calc, variable=self.log_var, command=self.update_plot, style="Toggle.TButton")
-        self.chk_log.pack(fill="x", pady=2) 
-        self.ui_elements["chk_log"] = self.chk_log
+        
+        # --- [MODIFIED] Background ROI Controls ---
+        f_bg_tools = ttk.Frame(self.grp_calc, style="White.TFrame")
+        f_bg_tools.pack(fill="x", pady=(5, 0))
+        
+        # 按钮 1: 仅用于“定义”区域 (Action)
+        self.btn_draw_bg = ttk.Button(f_bg_tools, text="✏️ Draw BG Region", 
+                                      command=self.draw_bg_roi_action)
+        self.btn_draw_bg.pack(side="left", fill="x", expand=True, padx=(0, 2))
+        
+        # 按钮 2: 仅用于“切换”模式 (State Switch)
+        # 使用 Checkbutton + Toggle 样式，文字明确为 "Use ROI Mode"
+        self.chk_custom_bg = ttk.Checkbutton(f_bg_tools, text="Use ROI BG Mode", 
+                                             variable=self.use_custom_bg_var,
+                                             command=self.toggle_bg_mode,
+                                             style="Toggle.TButton",                                    
+                                             state="disabled") 
+        self.chk_custom_bg.pack(side="right", fill="x", padx=(2, 0))
+        
+        # 数值显示标签
+        self.lbl_bg_val = ttk.Label(self.grp_calc, text="ROI Val: None", 
+                                    foreground="gray", style="White.TLabel", font=("Segoe UI", 8))
+        self.lbl_bg_val.pack(fill="x", padx=2, pady=(2, 5))
 
+        # --- Log Scale Toggle ---
+        self.log_var = tk.BooleanVar(value=False)
+        self.chk_log = ttk.Checkbutton(self.grp_calc, text="📈 Log Scale", 
+                                       variable=self.log_var, 
+                                       command=self.update_plot, 
+                                       style="Toggle.TButton")
+        self.chk_log.pack(fill="x", pady=2) 
+        self.ui_elements["chk_log"] = self.chk_log 
+    
+    def toggle_bg_mode(self):
+        """
+        切换背景模式：点击 'Use ROI Mode' 按钮时触发
+        """
+        # 获取数值标签的引用
+        val_lbl = self.ui_elements.get("val_lbl_bg")
+        
+        if self.use_custom_bg_var.get():
+            # === 进入 ROI 模式 (禁用滑块) ===
+            self.bg_scale.state(['disabled'])
+            
+            # 1. 标题变灰
+            self.ui_elements["lbl_bg"].config(foreground="#CCCCCC")
+            
+            # 2. [NEW] 数值变灰 (不再显示红色)
+            if val_lbl: val_lbl.config(foreground="#CCCCCC")
+            
+        else:
+            # === 回到滑块模式 (启用滑块) ===
+            self.bg_scale.state(['!disabled'])
+            
+            # 1. 标题恢复深色
+            self.ui_elements["lbl_bg"].config(foreground="#333333")
+            
+            # 2. [NEW] 数值恢复红色 (强调色)
+            if val_lbl: val_lbl.config(foreground="red")
+            
+        # 立即根据新模式刷新图像
+        self.update_plot()
+            
+        # 2. 刷新图像 (原来的功能)
+        self.update_plot()
     def setup_view_group(self):
         self.grp_view = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
         self.grp_view.pack(fill="x", pady=(0, 10))
@@ -404,15 +491,20 @@ class RatioAnalyzerApp:
         current_year = datetime.datetime.now().year
         ttk.Label(inner_box, text=f"© {current_year} Dr. Kui Wang | www.cns.ac.cn", font=("Segoe UI", 8), foreground="gray", style="White.TLabel").pack(side="top", pady=(2, 0))
 
+
     def create_bottom_panel(self, parent):
         bottom_area = ttk.Frame(parent, padding=(0, 10, 0, 0), style="White.TFrame")
         bottom_area.pack(fill="x", side="bottom")
+        
+        # --- Player Control ---
         p_frame = ttk.LabelFrame(bottom_area, text="Player", style="Card.TLabelframe")
         p_frame.pack(fill="x", pady=(0,10))
+        
         row_bar = ttk.Frame(p_frame, style="White.TFrame"); row_bar.pack(fill="x", padx=5)
         self.var_frame = tk.IntVar(value=0)
         self.lbl_frame = ttk.Label(row_bar, text="0/0", width=8, style="White.TLabel"); self.lbl_frame.pack(side="left")
         self.frame_scale = ttk.Scale(row_bar, from_=0, to=1, command=self.on_frame_slide); self.frame_scale.pack(side="left", fill="x", expand=True)
+        
         row_ctl = ttk.Frame(p_frame, style="White.TFrame"); row_ctl.pack(fill="x", padx=5, pady=2)
         self.btn_play = ttk.Button(row_ctl, text="▶", width=5, command=self.toggle_play); self.btn_play.pack(side="left")
         self.lbl_spd = ttk.Label(row_ctl, text="Speed:", style="White.TLabel"); self.lbl_spd.pack(side="left", padx=(10,2))
@@ -420,14 +512,19 @@ class RatioAnalyzerApp:
         self.fps_var = tk.StringVar(value="10 FPS")
         ttk.OptionMenu(row_ctl, self.fps_var, "10 FPS", "5 FPS", "10 FPS", "20 FPS", "Max", command=self.change_fps).pack(side="left")
         self.tb_frame_placeholder = ttk.Frame(row_ctl, style="White.TFrame"); self.tb_frame_placeholder.pack(side="right")
+        
+        # --- Tools Grid ---
         grid_area = ttk.Frame(bottom_area, style="White.TFrame"); grid_area.pack(fill="x", expand=True)
         grid_area.columnconfigure(0, weight=2); grid_area.columnconfigure(1, weight=1); grid_area.columnconfigure(2, weight=1)
         
+        # --- Col 0: ROI Tools ---
         fr_roi = ttk.LabelFrame(grid_area, padding=5, style="Card.TLabelframe"); fr_roi.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
         self.ui_elements["lbl_roi_tools"] = fr_roi
+        
         row_edit = ttk.Frame(fr_roi, style="White.TFrame"); row_edit.pack(fill="x", pady=2)
         self.shape_var = tk.StringVar(value="rect")
         def set_shape(mode): self.shape_var.set(mode); self.roi_mgr.set_mode(mode)
+        
         f_shapes = ttk.Frame(row_edit, style="White.TFrame"); f_shapes.pack(side="left", fill="y")
         self.lbl_shape = ttk.Label(f_shapes, text="Shape:", style="White.TLabel"); self.lbl_shape.pack(side="left", padx=(0, 2))
         self.ui_elements["lbl_shape"] = self.lbl_shape
@@ -436,36 +533,55 @@ class RatioAnalyzerApp:
         ttk.Radiobutton(f_shapes, text="⬠", variable=self.shape_var, value="polygon", command=lambda: set_shape("polygon"), style="Toolbutton").pack(side="left", padx=2)
         
         # New ROI (Ctrl+T)
-        self.btn_draw = ttk.Button(row_edit, text="New ROI (Ctrl+T)", command=self.roi_mgr.start_drawing, style="Toggle.TButton"); self.btn_draw.pack(side="left", padx=(10, 2), fill="y", expand=True)
+        self.btn_draw = ttk.Button(row_edit, text="New (Ctrl+T)", command=self.roi_mgr.start_drawing, style="Toggle.TButton"); self.btn_draw.pack(side="left", padx=(10, 2), fill="y", expand=True)
         self.ui_elements["btn_draw"] = self.btn_draw
         self.roi_mgr.set_draw_button(self.btn_draw)
         
         self.btn_undo = ttk.Button(row_edit, text="↩️", command=self.roi_mgr.remove_last, width=3, style="Compact.TButton"); self.btn_undo.pack(side="left", padx=1, fill="y")
         self.btn_clear = ttk.Button(row_edit, text="🗑️", command=self.roi_mgr.clear_all, width=3, style="Compact.TButton"); self.btn_clear.pack(side="left", padx=1, fill="y")
         
-        # [New] Save/Load Buttons
+        # Save/Load ROI
         self.btn_save_roi = ttk.Button(row_edit, text="💾", width=3, command=self.save_roi_dialog, style="Compact.TButton"); self.btn_save_roi.pack(side="left", padx=1, fill="y")
         self.btn_load_roi = ttk.Button(row_edit, text="📂", width=3, command=self.load_roi_dialog, style="Compact.TButton"); self.btn_load_roi.pack(side="left", padx=1, fill="y")
 
+        # Plot Action Row
         row_act = ttk.Frame(fr_roi, style="White.TFrame"); row_act.pack(fill="x", pady=4)
-        self.btn_plot = ttk.Button(row_act, text="📈 Plot Curve", command=self.plot_roi_curve); self.btn_plot.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        
+        # 1. Plot Button
+        self.btn_plot = ttk.Button(row_act, text="📈 Plot Curve (Ctrl+P)", command=self.plot_roi_curve)
+        self.btn_plot.pack(side="left", fill="x", expand=True, padx=(0, 5))
         self.ui_elements["btn_plot"] = self.btn_plot
+        
+        # 2. [MODIFIED] Live Monitor Toggle
         self.live_plot_var = tk.BooleanVar(value=False)
-        self.chk_live = ttk.Checkbutton(row_act, variable=self.live_plot_var, text="Live Monitor", style="Toggle.TButton", command=self.plot_roi_curve); self.chk_live.pack(side="right")
+        self.chk_live = ttk.Checkbutton(row_act, 
+                                        variable=self.live_plot_var, 
+                                        text="Live Monitor (Ctrl+L)", # 更新文字显示快捷键
+                                        style="Toggle.TButton", 
+                                        width=25,                     # [NEW] 设置固定宽度 (20字符宽) 让它看起来更宽
+                                        command=self.plot_roi_curve)
+        self.chk_live.pack(side="right")
         self.ui_elements["chk_live"] = self.chk_live
+        
+        # Params Row
         row_param = ttk.Frame(fr_roi, style="White.TFrame"); row_param.pack(fill="x", pady=(4, 0))
         row_param.columnconfigure(0, weight=1); row_param.columnconfigure(1, weight=1); row_param.columnconfigure(2, weight=1)
+        
         f_int = ttk.Frame(row_param, style="White.TFrame"); f_int.grid(row=0, column=0, sticky="w")
         self.lbl_int = ttk.Label(f_int, text="Imaging Interval (s):", style="White.TLabel"); self.lbl_int.pack(side="left")
         self.ui_elements["lbl_interval"] = self.lbl_int
         self.var_interval = tk.DoubleVar(value=1.0)
         ttk.Entry(f_int, textvariable=self.var_interval, width=5).pack(side="left", padx=(2, 0))
+        
         f_unit = ttk.Frame(row_param, style="White.TFrame"); f_unit.grid(row=0, column=1) 
         self.lbl_unit = ttk.Label(f_unit, text="Plotting Unit:", style="White.TLabel"); self.lbl_unit.pack(side="left")
         self.ui_elements["lbl_unit"] = self.lbl_unit
         self.combo_unit = ttk.Combobox(f_unit, values=["s", "m", "h"], width=3, state="readonly"); self.combo_unit.set("s"); self.combo_unit.pack(side="left", padx=2)
+        
         self.norm_var = tk.BooleanVar(value=False)
         self.chk_norm = ttk.Checkbutton(row_param, text="Normalization (ΔR/R₀)", variable=self.norm_var, style="Toggle.TButton", command=self.plot_roi_curve); self.chk_norm.grid(row=0, column=2, sticky="e")
+        
+        # --- Col 1: Export ---
         fr_exp = ttk.LabelFrame(grid_area, padding=5, style="Card.TLabelframe"); fr_exp.grid(row=0, column=1, sticky="nsew", padx=5)
         self.ui_elements["lbl_export"] = fr_exp
         self.btn_save_frame = ttk.Button(fr_exp, command=self.save_current_frame); self.btn_save_frame.pack(fill="x", pady=2)
@@ -474,6 +590,8 @@ class RatioAnalyzerApp:
         self.ui_elements["btn_save_stack"] = self.btn_save_stack
         self.btn_save_raw = ttk.Button(fr_exp, command=self.save_raw_thread, style="Gray.TButton"); self.btn_save_raw.pack(fill="x", pady=2)
         self.ui_elements["btn_save_raw"] = self.btn_save_raw
+        
+        # --- Col 2: Settings ---
         fr_set = ToggledFrame(grid_area, text="Settings", style="Card.TFrame"); fr_set.grid(row=0, column=2, sticky="new", padx=(5, 0))
         self.ui_elements["lbl_settings"] = fr_set.lbl_title
         self.btn_update = ttk.Button(fr_set.sub_frame, command=self.check_update_thread); self.btn_update.pack(fill="x", pady=2)
@@ -481,7 +599,6 @@ class RatioAnalyzerApp:
         self.btn_contact = ttk.Button(fr_set.sub_frame, command=lambda: webbrowser.open("https://www.cns.ac.cn")); self.btn_contact.pack(fill="x", pady=2)
         self.ui_elements["btn_contact"] = self.btn_contact
 
-    # [Modified] Improved Save Dialog with Auto-naming
     def save_roi_dialog(self):
         default_name = "ROI_Data.json"
         try:
@@ -491,7 +608,6 @@ class RatioAnalyzerApp:
             else: source_path = self.dual_path
             
             if source_path:
-                # [修改] 直接使用原文件名，不加 _ROIs 后缀
                 base = os.path.splitext(os.path.basename(source_path))[0]
                 default_name = f"{base}.json"
         except: pass
@@ -661,10 +777,42 @@ class RatioAnalyzerApp:
 
     def get_active_data(self):
         if self.data1 is None: return None, None, 0, 0
-        if self.ratio_mode_var.get() == "c1_c2":
-            return self.data1, self.data2, self.cached_bg1, self.cached_bg2
+        
+        # [NEW] Determine which background to use
+        if self.use_custom_bg_var.get():
+            # Use user-defined ROI background
+            bg1 = self.custom_bg1
+            bg2 = self.custom_bg2
         else:
-            return self.data2, self.data1, self.cached_bg2, self.cached_bg1
+            # Use default percentile background
+            bg1 = self.cached_bg1
+            bg2 = self.cached_bg2
+
+        if self.ratio_mode_var.get() == "c1_c2":
+            return self.data1, self.data2, bg1, bg2
+        else:
+            return self.data2, self.data1, bg2, bg1
+    def draw_bg_roi_action(self):
+        # Trigger RoiManager to start drawing in 'background' mode
+        self.roi_mgr.start_drawing(mode="rect", is_background=True)
+    
+    def set_custom_background(self, val1, val2):
+        """
+        回调函数：由 RoiManager 计算完成后调用。
+        功能：只更新数值和标签，不强制切换模式。
+        """
+        self.custom_bg1 = val1
+        self.custom_bg2 = val2
+        
+        self.lbl_bg_val.config(text=f"ROI Val: {val1:.1f} / {val2:.1f}")
+        
+
+        self.chk_custom_bg.config(state="normal")
+        
+
+        if self.use_custom_bg_var.get():
+            self.update_plot()
+
 
     def create_compact_file_row(self, parent, btn_key, cmd, lbl_attr):
         f = ttk.Frame(parent, style="White.TFrame"); f.pack(fill="x", pady=1)
@@ -692,19 +840,29 @@ class RatioAnalyzerApp:
     def create_bg_slider(self, parent, label_key, min_v, max_v, variable):
         f = ttk.Frame(parent, style="White.TFrame"); f.pack(fill="x", pady=1)
         h = ttk.Frame(f, style="White.TFrame"); h.pack(fill="x")
+        
+        # 标题 Label (需要翻译，所以放入 ui_elements)
         lbl = ttk.Label(h, style="White.TLabel"); lbl.pack(side="left") 
         self.ui_elements[label_key] = lbl
-        val_lbl = ttk.Label(h, text=str(variable.get()), foreground="red", font=self.f_bold, style="White.TLabel")
+        
+        # 数值 Label (显示动态数字，不能放入 ui_elements，否则会被翻译系统覆盖)
+        val_lbl = ttk.Label(h, text=str(int(variable.get())), foreground="#007acc", font=self.f_bold, style="White.TLabel")
         val_lbl.pack(side="right", padx=(0, 10))
+        
+        # [FIX] 单独存储这个引用，避开 update_language 的循环
+        self.lbl_bg_value_display = val_lbl 
+        
         def on_move(v): val_lbl.config(text=f"{int(float(v))}")
         def on_release(event):
             val = int(self.bg_scale.get())
             variable.set(val)
             self.recalc_background()
             self.update_plot()
+            
         self.bg_scale = ttk.Scale(f, from_=min_v, to=max_v, command=on_move)
         self.bg_scale.set(variable.get()); self.bg_scale.pack(fill="x")
         self.bg_scale.bind("<ButtonRelease-1>", on_release)
+
 
     def recalc_background(self):
         if self.data1 is None: return
