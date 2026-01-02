@@ -10,7 +10,7 @@ on:
 
 jobs:
   build-mac:
-    runs-on: macos-latest # 使用最新的 macOS 环境 (目前是 Apple Silicon，兼容性较好)
+    runs-on: macos-latest # 使用最新的 macOS 环境 (Apple Silicon)
     
     steps:
       # --- 1. 拉取代码 ---
@@ -21,65 +21,72 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9' # 建议固定一个稳定版本
+          python-version: '3.9'
           cache: 'pip'
 
-      # --- 3. 安装依赖 ---
+      # --- 3. 安装依赖 (关键瘦身步骤) ---
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          # 安装项目依赖
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          
+          # 【瘦身核心】：处理 requirements.txt
+          # 将 opencv-python 替换为无 GUI 的轻量版 opencv-python-headless
+          if [ -f requirements.txt ]; then
+            echo "Optimizing requirements.txt for macOS..."
+            # 使用 sed 替换 (macOS sed 语法需要 -i '')
+            sed -i '' 's/opencv-python/opencv-python-headless/g' requirements.txt
+            sed -i '' 's/opencv-contrib-python/opencv-python-headless/g' requirements.txt
+            
+            # 安装修改后的依赖
+            pip install -r requirements.txt
+          else
+            # 如果没有 requirements.txt，直接安装
+            pip install opencv-python-headless numpy matplotlib scipy tifffile
+          fi
+          
+          # 再次强制安装 headless 以防万一
+          pip install opencv-python-headless
+          
           # 安装打包工具
           pip install pyinstaller
 
       # --- 4. 同步版本号 ---
-      # 将 _version.py 中的版本号修改为当前 Release 的 Tag (例如 v1.8.0)
-      # 如果是手动触发 (main 分支)，版本号会显示为 main
       - name: Sync Version
         run: |
           TAG_NAME=${{ github.ref_name }}
           echo "Building version: $TAG_NAME"
           
-          # macOS 的 sed 语法需要 -i ''
-          # 假设 _version.py 位于 src/ria_gui/_version.py
           if [ -f "src/ria_gui/_version.py" ]; then
             sed -i '' "s/__version__\s*=\s*[\"'].*[\"']/__version__ = \"$TAG_NAME\"/" src/ria_gui/_version.py
-          else
-            echo "Warning: _version.py not found, skipping version sync."
           fi
 
       # --- 5. 执行打包 (PyInstaller) ---
       - name: Build with PyInstaller
         run: |
-          # 定义应用名称，包含版本号
           APP_NAME="RIA_Liya_${{ github.ref_name }}_macOS"
           
-          # 运行 PyInstaller
-          # --windowed: 无控制台模式
-          # --onedir: 打包成 .app 文件夹 (Mac 推荐方式)
-          # --icon: 指定 .icns 图标文件 (请确保你已经上传了该文件)
-          # --add-data: 包含资源文件
-          # --exclude-module: 排除不必要的库减小体积
+          # --exclude-module: 排除测试库和无用模块以减小体积
           pyinstaller --noconsole --windowed --name "$APP_NAME" \
             --add-data "src/ria_gui/assets:assets" \
             --icon "src/ria_gui/assets/app.icns" \
             --paths "src/ria_gui" \
             --exclude-module matplotlib.tests \
+            --exclude-module numpy.random._examples \
             --exclude-module tkinter.test \
             --exclude-module unittest \
+            --exclude-module pydoc \
+            --exclude-module lib2to3 \
             src/ria_gui/main.py
 
       # --- 6. 压缩打包产物 ---
-      # 将生成的 .app 文件夹压缩为 .zip，以便上传和分发
       - name: Package Application
         run: |
           cd dist
           APP_NAME="RIA_Liya_${{ github.ref_name }}_macOS"
           
-          # 检查 .app 是否存在
           if [ -d "$APP_NAME.app" ]; then
             echo "Packaging $APP_NAME.app ..."
+            # 使用 -r 递归压缩
             zip -r "$APP_NAME.zip" "$APP_NAME.app"
           else
             echo "Error: App build failed, directory not found."
@@ -87,7 +94,6 @@ jobs:
           fi
 
       # --- 7. 上传到 Release (仅正式发布时) ---
-      # 只有当触发事件是 Tag 推送（即发布 Release）时才执行
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
@@ -97,9 +103,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # --- 8. 上传测试产物 (Artifacts) ---
-      # 无论何时都执行。
-      # 用于在开发阶段（手动触发时）下载 zip 包进行测试。
-      # 下载位置：GitHub Actions -> 对应运行记录 -> 底部 Artifacts
+      # 无论手动还是自动触发都执行，方便你在 VS Code 插件里直接下载测试
       - name: Upload Artifact for Testing
         uses: actions/upload-artifact@v4
         with:
