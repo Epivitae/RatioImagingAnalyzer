@@ -24,20 +24,22 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        # 1. 安装 Python 依赖
         pip install -r requirements.txt
-        pip install pyinstaller create-dmg
+        pip install pyinstaller
+        
+        # 2. 通过 Homebrew 安装 create-dmg 工具 (关键修改)
+        brew install create-dmg
 
     - name: Extract Version
       id: get_version
       run: |
-        # 从 _version.py 读取版本号
         VERSION=$(python3 -c "import re; print(re.search(r'__version__\s*=\s*[\"\']([^\"\']+)[\"\']', open('src/ria_gui/_version.py').read()).group(1))")
         echo "Detected Version: $VERSION"
         echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
 
     - name: Build with PyInstaller
       run: |
-        # 注意：这里已将 icon 指定为 app.icns
         pyinstaller --noconfirm --onedir --windowed --clean \
           --name "RIA_${{ env.APP_VERSION }}" \
           --icon "src/ria_gui/assets/app.icns" \
@@ -52,14 +54,17 @@ jobs:
 
     - name: Sign App (Ad-hoc)
       run: |
-        # Apple Silicon (M1/M2) 需要签名才能运行
+        # 移除可能存在的旧签名并重新进行 Ad-hoc 签名
+        codesign --remove-signature "dist/RIA_${{ env.APP_VERSION }}.app" || true
         codesign --force --deep --sign - "dist/RIA_${{ env.APP_VERSION }}.app"
 
     - name: Create DMG Installer
       run: |
         mkdir -p dist/dmg
         
-        # 使用 create-dmg 打包，并使用相同的 icns 作为磁盘镜像图标
+        # 确保目标 DMG 不存在
+        rm -f "dist/dmg/RIA_${{ env.APP_VERSION }}_macOS.dmg"
+
         create-dmg \
           --volname "RIA Installer" \
           --volicon "src/ria_gui/assets/app.icns" \
