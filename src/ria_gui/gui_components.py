@@ -646,3 +646,60 @@ class RoiManager:
         except Exception as e:
             print(f"Background Calculation Error: {e}")
             tk.messagebox.showerror("Error", f"Failed to calc background: {e}")
+
+    def get_all_rois_data(self):
+        """返回当前所有 ROI 的数据列表 (用于工程文件保存)"""
+        # 提交当前正在画的临时 ROI
+        if self.temp_roi: self._commit_temp_roi()
+        self._stop_selector()
+
+        data_to_save = []
+        for roi in self.roi_list:
+            item = {"type": roi['type'], "color": roi['color'], "id": roi['id']}
+            if roi['type'] == "polygon": 
+                item["params"] = np.array(roi['params']).tolist() 
+            else: 
+                item["params"] = roi['params']
+            data_to_save.append(item)
+        return data_to_save
+
+    # [新增] 从数据列表恢复 ROI (用于工程文件加载)
+    def restore_rois_from_data(self, data_list):
+        """从列表数据中恢复 ROI"""
+        if not data_list or not isinstance(data_list, list): return
+        
+        self.clear_all() # 先清空现有 ROI
+        
+        try:
+            for item in data_list:
+                rtype = item["type"]
+                params = item["params"]
+                color = item.get("color", ROI_COLORS[0])
+                
+                # 类型转换恢复
+                if rtype == "polygon": 
+                    params = np.array(params)
+                else:
+                    params = tuple(params)
+                    if rtype == "circle": 
+                        # 圆形参数特殊处理 ((x,y), w, h)
+                        params = (tuple(params[0]), params[1], params[2])
+
+                mask = self._generate_mask(rtype, params)
+                if mask is None: continue
+                
+                # 创建高对比度 ROI
+                patch_group = self._create_high_contrast_roi(rtype, params, color)
+                
+                if patch_group:
+                    self.roi_list.append({
+                        'type': rtype,
+                        'patch_group': patch_group,
+                        'mask': mask,
+                        'color': color,
+                        'id': len(self.roi_list) + 1,
+                        'params': params
+                    })
+            self.app.plot_mgr.canvas.draw_idle()
+        except Exception as e:
+            print(f"Restore ROI Error: {e}")

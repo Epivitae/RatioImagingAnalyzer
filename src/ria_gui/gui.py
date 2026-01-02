@@ -10,6 +10,7 @@ import datetime
 import threading
 import requests
 import webbrowser
+import json
 
 # --- Import Components ---
 try:
@@ -330,52 +331,55 @@ class RatioAnalyzerApp:
         self.nb_import.pack(fill="x", expand=True)
         self.nb_import.bind("<<NotebookTabChanged>>", lambda e: self.check_ready())
         
-        # --- Tab 1: Separate Files ---
-        self.tab_sep = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
-        self.nb_import.add(self.tab_sep, text=" Separate Files ") 
-        self.ui_elements["tab_sep"] = lambda text: self.nb_import.tab(0, text=text)
-        self.create_compact_file_row(self.tab_sep, "btn_c1", self.select_c1, "lbl_c1_path")
-        self.create_compact_file_row(self.tab_sep, "btn_c2", self.select_c2, "lbl_c2_path")
-        
-        # --- Tab 2: Single File (Modified) ---
+        # === Tab 1: Single File (单文件 - 最常用，放第一位) ===
         self.tab_dual = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
         self.nb_import.add(self.tab_dual, text=" Single File ")
-        self.ui_elements["tab_dual"] = lambda text: self.nb_import.tab(1, text=text)
+        self.ui_elements["tab_dual"] = lambda text: self.nb_import.tab(0, text=text) # Update index to 0
         
-        # [修改] 手动构建这一行，以便插入通道计数标签
+        # Single File UI 内容
         f_row = ttk.Frame(self.tab_dual, style="White.TFrame")
         f_row.pack(fill="x", pady=1)
-        
-        # 按钮
         self.btn_dual = ttk.Button(f_row, command=self.select_dual, text="📂 Select File")
         self.btn_dual.pack(side="left")
         self.ui_elements["btn_dual"] = self.btn_dual
-        
-        # 路径显示 (占据剩余空间)
         self.lbl_dual_path = ttk.Label(f_row, text="...", foreground="gray", anchor="w", style="White.TLabel")
         self.lbl_dual_path.pack(side="left", padx=5, fill="x", expand=True)
-
-        # [修正] 通道数指示器 (Badge) - 放在最右侧
-        # 关键点：初始化时使用 "White.TLabel" 让它与背景融合（隐身）
         self.lbl_ch_indicator = ttk.Label(f_row, text="", style="White.TLabel")
         self.lbl_ch_indicator.pack(side="right", padx=(0, 5))
-        
-        # 注意：你之前的代码在这里又重复定义了一次 BadgeBlue，导致出现蓝色方块。已删除。
 
-        # Mixed Stacks & Channel Count Row
         f_inter = ttk.Frame(self.tab_dual, style="White.TFrame")
         f_inter.pack(fill="x", pady=(2, 0))
-        
         self.chk_inter = ttk.Checkbutton(f_inter, variable=self.is_interleaved_var, style="Toggle.TButton")
         self.chk_inter.pack(side="left")
         self.ui_elements["chk_interleaved"] = self.chk_inter
-        
         ttk.Label(f_inter, text="Ch Count:", style="White.TLabel").pack(side="left", padx=(10, 2))
         self.var_n_channels = tk.IntVar(value=2)
         self.sp_channels = ttk.Spinbox(f_inter, from_=1, to=20, textvariable=self.var_n_channels, width=3)
         self.sp_channels.pack(side="left")
+
+        # === Tab 2: Separate Files (分别导入 - 放第二位) ===
+        self.tab_sep = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
+        self.nb_import.add(self.tab_sep, text=" Separate Files ") 
+        self.ui_elements["tab_sep"] = lambda text: self.nb_import.tab(1, text=text) # Update index to 1
         
-        # Action Buttons
+        self.create_compact_file_row(self.tab_sep, "btn_c1", self.select_c1, "lbl_c1_path")
+        self.create_compact_file_row(self.tab_sep, "btn_c2", self.select_c2, "lbl_c2_path")
+        
+        # === Tab 3: Project (工程 - 新增) ===
+        self.tab_proj = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
+        self.nb_import.add(self.tab_proj, text=" Project ")
+        # 如果需要翻译，可以在 update_language 里添加对应 key
+        
+        f_proj_btns = ttk.Frame(self.tab_proj, style="White.TFrame")
+        f_proj_btns.pack(fill="both", expand=True, pady=5, padx=5)
+        
+        self.btn_load_proj = ttk.Button(f_proj_btns, text="📂 Load Project (.ria)", command=self.load_project_dialog)
+        self.btn_load_proj.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        
+        self.btn_save_proj = ttk.Button(f_proj_btns, text="💾 Save Current (.ria)", command=self.save_project_dialog)
+        self.btn_save_proj.pack(side="right", fill="x", expand=True, padx=(5, 0))
+        
+        # --- Action Buttons (Common) ---
         f_actions = ttk.Frame(self.grp_file, style="Card.TFrame")
         f_actions.pack(fill="x", pady=(10, 0))
         
@@ -385,7 +389,8 @@ class RatioAnalyzerApp:
 
         self.btn_clear_data = ttk.Button(f_actions, text="🗑", width=8, command=self.clear_all_data, style="Gray.TButton")
         self.btn_clear_data.pack(side="right", fill="y")
-    
+
+
     def setup_preprocess_group(self):
         self.grp_pre = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
         self.grp_pre.pack(fill="x", pady=(0, 10))
@@ -748,8 +753,10 @@ class RatioAnalyzerApp:
         try:
             current_tab = self.nb_import.index("current")
             source_path = None
-            if current_tab == 0: source_path = self.c1_path
-            else: source_path = self.dual_path
+            if current_tab == 0: 
+                source_path = self.dual_path # Tab 0 是 Single File
+            elif current_tab == 1:
+                source_path = self.c1_path   # Tab 1 是 Separate Files
             
             if source_path:
                 base = os.path.splitext(os.path.basename(source_path))[0]
@@ -826,30 +833,40 @@ class RatioAnalyzerApp:
             current_tab = self.nb_import.index("current")
             channels = []
             
+            # [修正] Tab 0 现在对应 Single File (单文件)
             if current_tab == 0:
-                d1, d2 = read_separate_files(self.c1_path, self.c2_path)
-                channels = [d1, d2]
-                # 分离文件模式，肯定是2通道，这里不需要更新 Single File 的标签
-            else:
+                if not self.dual_path: 
+                    raise ValueError("No file selected.")
+
+                # 根据是否交错和指定的通道数读取
                 n_ch = self.var_n_channels.get() if self.is_interleaved_var.get() else 2
                 channels = read_and_split_multichannel(self.dual_path, self.is_interleaved_var.get(), n_ch)
                 
-                # [修改] 根据通道数，动态应用“样式”和“文字”
+                # 动态更新右上角的通道数徽章
                 count = len(channels)
                 if count == 1:
-                    # 激活绿色徽章样式
                     self.lbl_ch_indicator.config(
                         text=f" 1 Ch (Int) ", 
                         style="BadgeGreen.TLabel" 
                     )
                 else:
-                    # 激活蓝色徽章样式
                     self.lbl_ch_indicator.config(
                         text=f" {count} Chs (Ratio) ", 
                         style="BadgeBlue.TLabel"
                     )
 
-            # ... (后续代码保持不变) ...
+            # [修正] Tab 1 现在对应 Separate Files (双文件)
+            elif current_tab == 1:
+                if not self.c1_path or not self.c2_path: 
+                    raise ValueError("Files not selected.")
+
+                d1, d2 = read_separate_files(self.c1_path, self.c2_path)
+                channels = [d1, d2]
+                # 分离文件模式默认就是2通道，通常不需要更新徽章或可以置空
+            
+            # (Project Tab 不需要在这里处理，因为它有单独的 Load Project 按钮)
+
+            # --- 以下是通用的数据分配逻辑 ---
             if len(channels) == 1:
                 self.data1 = channels[0]
                 self.data2 = None
@@ -889,22 +906,25 @@ class RatioAnalyzerApp:
             else:
                 self.btn_align.config(state="disabled")
 
-
+            # 重置视图模式并重建通道按钮栏
             self.view_mode = "ratio"
             self.rebuild_channel_bar()
 
-
             self.recalc_background()
+            
+            # 初始化绘图区
             self.frame_scale.configure(to=self.data1.shape[0]-1)
             self.var_frame.set(0); self.frame_scale.set(0)
             h, w = self.data1.shape[1], self.data1.shape[2]
             self.plot_mgr.init_image((h, w), cmap="coolwarm")
             self.roi_mgr.connect(self.plot_mgr.ax)
             self.update_plot()
+            
         except Exception as e:
             messagebox.showerror("Error", str(e))
         finally:
             self.root.config(cursor="")
+
     def clear_all_data(self):
         self.is_playing = False
         self.btn_play.config(text="▶")
@@ -1092,12 +1112,19 @@ class RatioAnalyzerApp:
 
     def check_ready(self):
         current_tab = self.nb_import.index("current")
+        # Tab 0: Single File
         if current_tab == 0:
-            if self.c1_path and self.c2_path: self.btn_load.config(state="normal")
-            else: self.btn_load.config(state="disabled")
-        else:
             if self.dual_path: self.btn_load.config(state="normal")
             else: self.btn_load.config(state="disabled")
+        # Tab 1: Separate Files
+        elif current_tab == 1:
+            if self.c1_path and self.c2_path: self.btn_load.config(state="normal")
+            else: self.btn_load.config(state="disabled")
+        # Tab 2: Project (Project tab doesn't use the main Load button)
+        else:
+            self.btn_load.config(state="disabled")
+
+
 
     def run_alignment_thread(self):
         if self.data1 is None: return
@@ -1380,6 +1407,172 @@ class RatioAnalyzerApp:
         msg = self.t("msg_new_ver").format(version)
         if messagebox.askyesno(self.t("title_update"), msg):
             webbrowser.open(url)
+
+
+    def save_project_dialog(self):
+        if self.data1 is None:
+            messagebox.showwarning("Save Project", "No data loaded to save.")
+            return
+            
+        default_name = f"Project_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.ria"
+        path = filedialog.asksaveasfilename(
+            defaultextension=".ria",
+            filetypes=[("RIA Project", "*.ria"), ("JSON", "*.json")],
+            initialfile=default_name
+        )
+        if path:
+            self.save_project_logic(path)
+
+    def save_project_logic(self, filepath):
+        try:
+            # 1. 收集源文件信息
+            source_info = {
+                "mode": "single" if self.dual_path else "separate",
+                "path_dual": self.dual_path,
+                "path_c1": self.c1_path,
+                "path_c2": self.c2_path,
+                "is_interleaved": self.is_interleaved_var.get(),
+                "n_channels": self.var_n_channels.get()
+            }
+            
+            # 2. 收集参数
+            params = {
+                "int_thresh": self.var_int_thresh.get(),
+                "ratio_thresh": self.var_ratio_thresh.get(),
+                "smooth": self.var_smooth.get(),
+                "bg_percent": self.var_bg.get(),
+                "log_scale": self.log_var.get(),
+                # 自定义背景 ROI 数值
+                "use_custom_bg": self.use_custom_bg_var.get(),
+                "custom_bg1": self.custom_bg1,
+                "custom_bg2": self.custom_bg2
+            }
+            
+            # 3. 收集视图设置
+            view_settings = {
+                "ratio_mode": self.ratio_mode_var.get(),
+                "cmap": self.cmap_var.get(),
+                "bg_color": self.bg_color_var.get(),
+                "lock_range": self.lock_var.get(),
+                "vmin": self.entry_vmin.get(),
+                "vmax": self.entry_vmax.get(),
+                "view_mode": self.view_mode # 当前正看着哪个通道
+            }
+            
+            # 4. 收集 ROI
+            rois = self.roi_mgr.get_all_rois_data()
+            
+            # 5. 写入
+            project_data = {
+                "version": self.VERSION,
+                "timestamp": str(datetime.datetime.now()),
+                "source": source_info,
+                "params": params,
+                "view": view_settings,
+                "rois": rois
+            }
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(project_data, f, indent=4)
+                
+            messagebox.showinfo("Success", "Project saved successfully!")
+            
+        except Exception as e:
+            messagebox.showerror("Save Error", str(e))
+
+    def load_project_dialog(self):
+        path = filedialog.askopenfilename(filetypes=[("RIA Project", "*.ria"), ("JSON", "*.json")])
+        if path:
+            self.load_project_logic(path)
+
+    def load_project_logic(self, filepath):
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            src = data.get("source", {})
+            params = data.get("params", {})
+            view = data.get("view", {})
+            rois = data.get("rois", [])
+            
+            # 1. 恢复文件路径并加载数据
+            # 先清空当前数据
+            self.clear_all_data()
+            
+            mode = src.get("mode", "single")
+            
+            if mode == "single":
+                p = src.get("path_dual")
+                if not p or not os.path.exists(p):
+                    messagebox.showerror("Error", f"Original source file not found:\n{p}")
+                    return
+                # 恢复 UI 状态
+                self.nb_import.select(0) # 切到 Single Tab
+                self.dual_path = p
+                self.lbl_dual_path.config(text=os.path.basename(p))
+                self.is_interleaved_var.set(src.get("is_interleaved", False))
+                self.var_n_channels.set(src.get("n_channels", 2))
+            else:
+                p1 = src.get("path_c1")
+                p2 = src.get("path_c2")
+                if not p1 or not os.path.exists(p1) or not p2 or not os.path.exists(p2):
+                    messagebox.showerror("Error", "Original source files not found.")
+                    return
+                # 恢复 UI 状态
+                self.nb_import.select(1) # 切到 Separate Tab
+                self.c1_path = p1; self.lbl_c1_path.config(text=os.path.basename(p1))
+                self.c2_path = p2; self.lbl_c2_path.config(text=os.path.basename(p2))
+            
+            # 触发加载 (核心!)
+            self.check_ready()
+            self.load_data() # 这会读取图像、计算默认背景等
+            
+            # 2. 恢复参数 (在 load_data 之后覆盖默认值)
+            self.var_int_thresh.set(params.get("int_thresh", 0))
+            self.var_ratio_thresh.set(params.get("ratio_thresh", 0))
+            self.var_smooth.set(params.get("smooth", 0))
+            self.var_bg.set(params.get("bg_percent", 5.0))
+            self.log_var.set(params.get("log_scale", False))
+            
+            # 恢复自定义背景
+            if params.get("use_custom_bg", False):
+                self.custom_bg1 = params.get("custom_bg1", 0)
+                self.custom_bg2 = params.get("custom_bg2", 0)
+                self.use_custom_bg_var.set(True)
+                # 更新 UI 状态
+                self.toggle_bg_mode() 
+                self.lbl_bg_val.config(text=f"ROI Val: {self.custom_bg1:.1f} / {self.custom_bg2:.1f}")
+            
+            # 3. 恢复视图设置
+            self.ratio_mode_var.set(view.get("ratio_mode", "c1_c2"))
+            self.update_mode_options() # 刷新下拉框文字
+            
+            self.cmap_var.set(view.get("cmap", "coolwarm"))
+            self.bg_color_var.set(view.get("bg_color", "Trans"))
+            
+            if view.get("lock_range", False):
+                self.lock_var.set(True)
+                self.entry_vmin.config(state="normal"); self.entry_vmin.delete(0, tk.END); self.entry_vmin.insert(0, view.get("vmin", "0.0"))
+                self.entry_vmax.config(state="normal"); self.entry_vmax.delete(0, tk.END); self.entry_vmax.insert(0, view.get("vmax", "1.0"))
+                self.toggle_scale_mode() # 触发 UI 锁定
+            
+            # 4. 恢复 ROI
+            self.roi_mgr.restore_rois_from_data(rois)
+            
+            # 5. 恢复 View Mode (Ratio/Ch1...)
+            saved_view_mode = view.get("view_mode", "ratio")
+            self.set_view_mode(saved_view_mode) 
+            
+            # 强制刷新一次全图
+            self.update_plot()
+            self.update_cmap()
+            
+            messagebox.showinfo("Success", "Project loaded successfully!")
+
+        except Exception as e:
+            messagebox.showerror("Load Error", f"Failed to load project:\n{str(e)}")
+            import traceback
+            traceback.print_exc()
 
 if __name__ == "__main__":
     root = tk.Tk()

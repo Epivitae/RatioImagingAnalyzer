@@ -96,7 +96,18 @@ def main():
         print(f"Warning: Could not set AppUserModelID: {e}")
 
     root = tk.Tk()
-    app = RatioAnalyzerApp(root)
+    
+    # [修改重点] 1. 检查是否有文件通过双击传入
+    startup_file = None
+    if len(sys.argv) > 1:
+        # sys.argv[0] 是脚本名，sys.argv[1] 是第一个参数（文件路径）
+        candidate = sys.argv[1]
+        if os.path.exists(candidate):
+            startup_file = candidate
+            print(f"Startup file detected: {startup_file}")
+
+    # [修改重点] 2. 将 startup_file 传给 App
+    app = RatioAnalyzerApp(root, startup_file=startup_file)
     root.mainloop()
 
 if __name__ == "__main__":
