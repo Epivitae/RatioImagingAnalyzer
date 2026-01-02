@@ -22,7 +22,7 @@ jobs:
         cache: 'pip'
 
     - name: Install dependencies
-      # 注意：假设 requirements.txt 还在项目根目录
+      # 依赖安装依然在根目录进行，因为 requirements.txt 通常在根目录
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
@@ -32,19 +32,19 @@ jobs:
     - name: Extract Version
       id: get_version
       run: |
+        # 这里用完整路径读取 version，确保不出错
         VERSION=$(python3 -c "import re; print(re.search(r'__version__\s*=\s*[\"\']([^\"\']+)[\"\']', open('src/ria_gui/_version.py').read()).group(1))")
         echo "Detected Version: $VERSION"
         echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
 
     - name: Build with PyInstaller
-      # ✅ 核心修改 1: 指定工作目录，自动进入 src/ria_gui
+      # ✅ 【核心修改】这里指定工作目录，模拟你本地的操作
       working-directory: src/ria_gui
       run: |
         echo "Current directory: $(pwd)"
         
-        # ✅ 核心修改 2: 使用相对路径 (和本地命令保持一致)
-        # 移除了 --paths 和本地模块的 hidden-import (进入目录后 PyInstaller 通常能自动发现它们)
-        # 保留了必要的第三方库 hidden-import
+        # ✅ 因为进入了 src/ria_gui，所以下面的路径都要改成相对路径（去掉 src/ria_gui 前缀）
+        # ✅ 这完全复制了你本地成功的命令
         
         pyinstaller --noconfirm --onedir --windowed --clean \
           --name "RIA_${{ env.APP_VERSION }}" \
@@ -60,7 +60,7 @@ jobs:
 
     - name: Sign App (Ad-hoc)
       run: |
-        # ✅ 路径修正: dist 现在位于 src/ria_gui/dist
+        # ✅ 因为打包是在 src/ria_gui 下进行的，PyInstaller 会把 dist 生成在 src/ria_gui/dist
         APP_PATH="src/ria_gui/dist/RIA_${{ env.APP_VERSION }}.app"
         
         echo "Signing app at: $APP_PATH"
@@ -69,16 +69,15 @@ jobs:
 
     - name: Create DMG Installer
       run: |
-        # 准备目录
+        # 在根目录创建存放 DMG 的文件夹
         mkdir -p dist/dmg
         rm -f "dist/dmg/RIA_${{ env.APP_VERSION }}_macOS.dmg"
 
-        # 定义路径变量方便阅读
+        # ✅ 修正源文件路径，指向 src/ria_gui/dist
         APP_SOURCE="src/ria_gui/dist/RIA_${{ env.APP_VERSION }}.app"
         DMG_OUTPUT="dist/dmg/RIA_${{ env.APP_VERSION }}_macOS.dmg"
         ICON_SOURCE="src/ria_gui/assets/app.icns"
 
-        # ✅ 路径修正: create-dmg 的输入源改为 src/ria_gui 下的路径
         create-dmg \
           --volname "RIA Installer" \
           --volicon "$ICON_SOURCE" \
@@ -95,5 +94,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: RIA-macOS-${{ env.APP_VERSION }}
+        # 上传根目录下的 dist/dmg
         path: dist/dmg/*.dmg
-        if-no-files-found: error
