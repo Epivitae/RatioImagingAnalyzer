@@ -3,23 +3,27 @@ name: Sync to GitCode
 on:
   push:
     branches:
-      - main  # 或者 master，根据你的主分支名称修改
-  workflow_dispatch: # 允许手动触发
+      - main  # 确保你的主分支名是 main，如果是 master 请修改这里
+  workflow_dispatch: # 允许你在 GitHub 网页上手动点按钮触发测试
 
 jobs:
-  git-mirror:
+  sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      # 第一步：下载代码 (使用 GitHub 官方 action，自带权限)
+      - name: Checkout
+        uses: actions/checkout@v3
         with:
-          fetch-depth: 0 # 必须设置为0，否则无法获取完整的 commit 历史用于镜像
+          fetch-depth: 0 # 必须设为0，否则拉取不到完整的历史记录，会导致镜像失败
 
+      # 第二步：直接推送给 GitCode
       - name: Push to GitCode
-        uses: wearerequired/git-mirror-action@v1
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }} # 如果用 SSH 方式（可选）
-        with:
-          # 源仓库 (当前仓库)
-          source-repo: "git@github.com:Epivitae/RatioImagingAnalyzer.git"
-          # 目标仓库 (GitCode)
-          destination-repo: "https://Epivitae:${{ secrets.GITCODE_TOKEN }}@gitcode.com/Epivitae/RatioImagingAnalyzer.git"
+        run: |
+          # 1. 设置 GitCode 远程仓库地址 (嵌入你的 Token)
+          # 格式: https://用户名:Token@gitcode.com/用户名/仓库名.git
+          git remote add gitcode "https://Epivitae:${{ secrets.GITCODE_TOKEN }}@gitcode.com/Epivitae/RatioImagingAnalyzer.git"
+          
+          # 2. 强制推送到 GitCode
+          # --force 确保强制覆盖，--all 推送所有分支，--tags 推送所有标签
+          git push --force --all gitcode
+          git push --force --tags gitcode
