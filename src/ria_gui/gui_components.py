@@ -51,6 +51,7 @@ class PlotManager:
         self.drag_cid = None
         self.last_drag_time = 0
         self.btn_draw_ref = None
+        self.is_drawing_bg = False
 
         # --- 初始化 Matplotlib ---
         self.fig = plt.Figure(figsize=(5, 5), dpi=100)
@@ -165,6 +166,7 @@ class RoiManager:
         self.last_drag_time = 0
         
         self.btn_draw_ref = None
+        self.is_drawing_bg = False
 
     def set_draw_button(self, btn_widget):
         self.btn_draw_ref = btn_widget
