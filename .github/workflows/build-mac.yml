@@ -22,6 +22,7 @@ jobs:
         cache: 'pip'
 
     - name: Install dependencies
+      # 注意：假设 requirements.txt 还在项目根目录
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
@@ -36,53 +37,59 @@ jobs:
         echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
 
     - name: Build with PyInstaller
+      # ✅ 核心修改 1: 指定工作目录，自动进入 src/ria_gui
+      working-directory: src/ria_gui
       run: |
-        # 核心修改：
-        # 1. 添加 --paths "src/ria_gui" 让 PyInstaller 知道去哪找模块
-        # 2. 添加所有自定义模块到 --hidden-import
+        echo "Current directory: $(pwd)"
+        
+        # ✅ 核心修改 2: 使用相对路径 (和本地命令保持一致)
+        # 移除了 --paths 和本地模块的 hidden-import (进入目录后 PyInstaller 通常能自动发现它们)
+        # 保留了必要的第三方库 hidden-import
         
         pyinstaller --noconfirm --onedir --windowed --clean \
           --name "RIA_${{ env.APP_VERSION }}" \
-          --icon "src/ria_gui/assets/app.icns" \
-          --add-data "src/ria_gui/assets:assets" \
-          --paths "src/ria_gui" \
-          --hidden-import "gui" \
-          --hidden-import "processing" \
-          --hidden-import "constants" \
-          --hidden-import "_version" \
-          --hidden-import "components" \
-          --hidden-import "io_utils" \
-          --hidden-import "gui_components" \
-          --hidden-import "plot_window" \
+          --icon "assets/app.icns" \
+          --add-data "assets:assets" \
           --hidden-import "cv2" \
           --hidden-import "numpy" \
           --hidden-import "matplotlib" \
           --hidden-import "tkinter" \
           --hidden-import "PIL" \
           --hidden-import "tifffile" \
-          src/ria_gui/main.py
+          main.py
 
     - name: Sign App (Ad-hoc)
       run: |
-        codesign --remove-signature "dist/RIA_${{ env.APP_VERSION }}.app" || true
-        codesign --force --deep --sign - "dist/RIA_${{ env.APP_VERSION }}.app"
+        # ✅ 路径修正: dist 现在位于 src/ria_gui/dist
+        APP_PATH="src/ria_gui/dist/RIA_${{ env.APP_VERSION }}.app"
+        
+        echo "Signing app at: $APP_PATH"
+        codesign --remove-signature "$APP_PATH" || true
+        codesign --force --deep --sign - "$APP_PATH"
 
     - name: Create DMG Installer
       run: |
+        # 准备目录
         mkdir -p dist/dmg
         rm -f "dist/dmg/RIA_${{ env.APP_VERSION }}_macOS.dmg"
 
+        # 定义路径变量方便阅读
+        APP_SOURCE="src/ria_gui/dist/RIA_${{ env.APP_VERSION }}.app"
+        DMG_OUTPUT="dist/dmg/RIA_${{ env.APP_VERSION }}_macOS.dmg"
+        ICON_SOURCE="src/ria_gui/assets/app.icns"
+
+        # ✅ 路径修正: create-dmg 的输入源改为 src/ria_gui 下的路径
         create-dmg \
           --volname "RIA Installer" \
-          --volicon "src/ria_gui/assets/app.icns" \
+          --volicon "$ICON_SOURCE" \
           --window-pos 200 120 \
           --window-size 600 400 \
           --icon-size 100 \
           --icon "RIA_${{ env.APP_VERSION }}.app" 200 190 \
           --hide-extension "RIA_${{ env.APP_VERSION }}.app" \
           --app-drop-link 400 185 \
-          "dist/dmg/RIA_${{ env.APP_VERSION }}_macOS.dmg" \
-          "dist/RIA_${{ env.APP_VERSION }}.app"
+          "$DMG_OUTPUT" \
+          "$APP_SOURCE"
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
