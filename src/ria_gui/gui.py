@@ -48,7 +48,7 @@ except ImportError:
 warnings.filterwarnings('ignore')
 
 class RatioAnalyzerApp:
-    def __init__(self, root):
+    def __init__(self, root, startup_file=None):
         self.root = root
         
         # --- Font Init ---
@@ -116,6 +116,42 @@ class RatioAnalyzerApp:
         self.change_font_size(0)
         
         self.root.after(100, self.load_graphics_engine)
+        if startup_file:
+            # 延时稍微长一点(比如800ms)，或者在 auto_load_project 里做检查，确保图形引擎加载完毕
+            self.root.after(800, lambda: self.auto_load_project(startup_file))
+
+    def auto_load_project(self, filepath):
+        """
+        程序启动时自动加载工程文件。
+        具备重试机制，确保 Graphics Engine 初始化完毕后再加载。
+        """
+        # 1. 检查绘图引擎是否就绪
+        if self.plot_mgr is None or not hasattr(self.plot_mgr, 'ax'):
+            print("Graphics engine not ready, retrying in 200ms...")
+            self.root.after(200, lambda: self.auto_load_project(filepath))
+            return
+
+        # 2. 检查文件是否存在
+        if not os.path.exists(filepath):
+            messagebox.showerror("Error", f"Startup file not found:\n{filepath}")
+            return
+
+        # 3. 根据文件后缀决定加载逻辑
+        try:
+            print(f"Auto-loading: {filepath}")
+            if filepath.endswith(".ria") or filepath.endswith(".json"):
+                self.load_project_logic(filepath)
+            else:
+                # 如果用户双击的是图片文件(.tif)而不是工程文件，尝试作为单文件加载
+                self.nb_import.select(0) # 切换到 Single File Tab
+                self.dual_path = filepath
+                self.lbl_dual_path.config(text=os.path.basename(filepath))
+                self.check_ready()
+                # 只有这里需要手动触发加载，load_project_logic 内部已经包含了 load_data
+                self.load_data() 
+                
+        except Exception as e:
+            messagebox.showerror("Auto-Load Error", f"Failed to load startup file:\n{e}")
 
 
     def setup_shortcuts(self):
@@ -170,7 +206,22 @@ class RatioAnalyzerApp:
         style.configure("Blue.TLabel", foreground=BLUE_COLOR, font=self.f_bold)
         
         style.configure("Toggle.TButton", font=self.f_normal, background="#FFFFFF", borderwidth=1, padding=5)
-        style.map("Toggle.TButton", background=[("selected", "#E8F0FE"), ("active", "#F5F5F5")], foreground=[("selected", BLUE_COLOR)], relief=[("selected", "sunken"), ("!selected", "raised")])
+        style.configure("Toggle.TButton", font=self.f_normal, background="#FFFFFF", borderwidth=1, padding=5)
+        style.map("Toggle.TButton", 
+            background=[
+                ("selected", "#E8F0FE"), 
+                ("disabled", "#E0E0E0"), 
+                ("active", "#F5F5F5")
+            ], 
+            foreground=[
+                ("selected", BLUE_COLOR), 
+                ("disabled", "#A0A0A0")
+            ], 
+            relief=[
+                ("selected", "sunken"), 
+                ("!selected", "raised")
+            ]
+        )
         style.configure("Starred.TButton", font=self.f_normal, foreground="#F5C518")
         style.configure("Compact.TButton", font=self.f_normal, padding=5, width=3) 
         style.configure("Gray.TButton", font=self.f_normal, background="#E0E0E0", foreground="#555555")
@@ -331,44 +382,56 @@ class RatioAnalyzerApp:
         self.nb_import.pack(fill="x", expand=True)
         self.nb_import.bind("<<NotebookTabChanged>>", lambda e: self.check_ready())
         
-        # === Tab 1: Single File (单文件 - 最常用，放第一位) ===
+        # === Tab 1: Single File (单文件 - 最常用) ===
         self.tab_dual = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
         self.nb_import.add(self.tab_dual, text=" Single File ")
-        self.ui_elements["tab_dual"] = lambda text: self.nb_import.tab(0, text=text) # Update index to 0
+        self.ui_elements["tab_dual"] = lambda text: self.nb_import.tab(0, text=text) 
         
-        # Single File UI 内容
+        # --- Row 1: Select File & Path & Indicator ---
         f_row = ttk.Frame(self.tab_dual, style="White.TFrame")
         f_row.pack(fill="x", pady=1)
+
+        # 1. 左边：选择文件按钮
         self.btn_dual = ttk.Button(f_row, command=self.select_dual, text="📂 Select File")
         self.btn_dual.pack(side="left")
         self.ui_elements["btn_dual"] = self.btn_dual
-        self.lbl_dual_path = ttk.Label(f_row, text="...", foreground="gray", anchor="w", style="White.TLabel")
-        self.lbl_dual_path.pack(side="left", padx=5, fill="x", expand=True)
-        self.lbl_ch_indicator = ttk.Label(f_row, text="", style="White.TLabel")
-        self.lbl_ch_indicator.pack(side="right", padx=(0, 5))
 
+        # 2. [关键修复] 右边：先占位徽章，保证不被遮挡
+        self.lbl_ch_indicator = ttk.Label(f_row, text="", style="White.TLabel")
+        self.lbl_ch_indicator.pack(side="right", padx=(5, 5))
+
+        # 3. 中间：文件路径 (填满剩余空间)
+        # width=1 是为了防止初始空路径把窗口撑得太宽
+        self.lbl_dual_path = ttk.Label(f_row, text="...", foreground="gray", anchor="w", style="White.TLabel", width=1)
+        self.lbl_dual_path.pack(side="left", padx=5, fill="x", expand=True)
+
+        # --- Row 2: Mixed Stacks Settings ---
         f_inter = ttk.Frame(self.tab_dual, style="White.TFrame")
         f_inter.pack(fill="x", pady=(2, 0))
+        
         self.chk_inter = ttk.Checkbutton(f_inter, variable=self.is_interleaved_var, style="Toggle.TButton")
         self.chk_inter.pack(side="left")
         self.ui_elements["chk_interleaved"] = self.chk_inter
-        ttk.Label(f_inter, text="Ch Count:", style="White.TLabel").pack(side="left", padx=(10, 2))
+        
+        # [关键修复] 只创建一个 Label 并赋值给 self.lbl_ch_count，方便后续变灰
+        self.lbl_ch_count = ttk.Label(f_inter, text="Ch Count:", style="White.TLabel")
+        self.lbl_ch_count.pack(side="left", padx=(10, 2))
+        
         self.var_n_channels = tk.IntVar(value=2)
         self.sp_channels = ttk.Spinbox(f_inter, from_=1, to=20, textvariable=self.var_n_channels, width=3)
         self.sp_channels.pack(side="left")
 
-        # === Tab 2: Separate Files (分别导入 - 放第二位) ===
+        # === Tab 2: Separate Files (分别导入) ===
         self.tab_sep = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
         self.nb_import.add(self.tab_sep, text=" Separate Files ") 
-        self.ui_elements["tab_sep"] = lambda text: self.nb_import.tab(1, text=text) # Update index to 1
+        self.ui_elements["tab_sep"] = lambda text: self.nb_import.tab(1, text=text) 
         
         self.create_compact_file_row(self.tab_sep, "btn_c1", self.select_c1, "lbl_c1_path")
         self.create_compact_file_row(self.tab_sep, "btn_c2", self.select_c2, "lbl_c2_path")
         
-        # === Tab 3: Project (工程 - 新增) ===
+        # === Tab 3: Project (工程管理) ===
         self.tab_proj = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
         self.nb_import.add(self.tab_proj, text=" Project ")
-        # 如果需要翻译，可以在 update_language 里添加对应 key
         
         f_proj_btns = ttk.Frame(self.tab_proj, style="White.TFrame")
         f_proj_btns.pack(fill="both", expand=True, pady=5, padx=5)
@@ -379,7 +442,7 @@ class RatioAnalyzerApp:
         self.btn_save_proj = ttk.Button(f_proj_btns, text="💾 Save Current (.ria)", command=self.save_project_dialog)
         self.btn_save_proj.pack(side="right", fill="x", expand=True, padx=(5, 0))
         
-        # --- Action Buttons (Common) ---
+        # --- Bottom: Global Action Buttons ---
         f_actions = ttk.Frame(self.grp_file, style="Card.TFrame")
         f_actions.pack(fill="x", pady=(10, 0))
         
@@ -389,6 +452,7 @@ class RatioAnalyzerApp:
 
         self.btn_clear_data = ttk.Button(f_actions, text="🗑", width=8, command=self.clear_all_data, style="Gray.TButton")
         self.btn_clear_data.pack(side="right", fill="y")
+
 
 
     def setup_preprocess_group(self):
@@ -1108,7 +1172,87 @@ class RatioAnalyzerApp:
         if p: 
             self.dual_path = p
             self.lbl_dual_path.config(text=os.path.basename(p))
+            self.inspect_file_metadata(p)
             self.check_ready()
+
+
+    def inspect_file_metadata(self, filepath):
+        """
+        预读取文件元数据。
+        如果检测到文件本身包含 >1 个通道，则自动禁用 'Mixed Stacks' 和 'Ch Count' 区域，
+        并将文字颜色变灰，给予用户明确的视觉反馈。
+        """
+        # 定义颜色常量
+        COLOR_NORMAL = "#333333"  # 正常深黑色
+        COLOR_DISABLED = "#A0A0A0" # 禁用时的灰色
+
+        # === 1. 初始化：先全部重置为“可用”状态 ===
+        # 这一步很重要：防止用户先选了一个多通道文件（变灰了），又换成单通道文件，
+        # 如果不重置，按钮会一直灰着点不了。
+        self.chk_inter.config(state="normal")
+        self.sp_channels.config(state="normal")
+        
+        # 恢复 Label 颜色 (确保 setup_file_group 里已经定义了 self.lbl_ch_count)
+        if hasattr(self, 'lbl_ch_count'):
+            self.lbl_ch_count.config(foreground=COLOR_NORMAL)
+            
+        # 恢复 Checkbutton 的样式 (虽然改 state 通常就够了，但为了保险)
+        self.chk_inter.state(['!disabled', '!selected']) 
+
+        try:
+            with tiff.TiffFile(filepath) as tif:
+                is_explicit_multichannel = False
+                detected_channels = 0
+
+                # --- 检测逻辑 A: ImageJ Metadata (最常见的情况) ---
+                # ImageJ 格式的 Tiff 通常会在 Metadata 里明确写着 'channels': N
+                if tif.imagej_metadata:
+                    detected_channels = tif.imagej_metadata.get('channels', 1)
+                    if detected_channels > 1:
+                        is_explicit_multichannel = True
+
+                # --- 检测逻辑 B: OME-XML 或 维度分析 (更通用的情况) ---
+                # 如果没有 ImageJ 标签，检查数据的维度 (Shape)
+                if not is_explicit_multichannel and len(tif.series) > 0:
+                    series = tif.series[0]
+                    # series.axes 通常是像 'TZCYX' 这样的字符串
+                    if hasattr(series, 'axes') and 'C' in series.axes:
+                        c_index = series.axes.find('C')
+                        # 检查 C (Channel) 维度的数量是否大于 1
+                        if series.shape[c_index] > 1:
+                            is_explicit_multichannel = True
+                            detected_channels = series.shape[c_index]
+
+                # === 2. 根据检测结果更新 UI ===
+                if is_explicit_multichannel:
+                    print(f"[Metadata] File detected as {detected_channels}-Channel. Disabling manual split.")
+                    
+                    # [动作 1] 取消勾选 (防止误操作)
+                    self.is_interleaved_var.set(False)
+                    
+                    # [动作 2] 禁用控件 (逻辑禁用)
+                    self.chk_inter.config(state="disabled")
+                    self.sp_channels.config(state="disabled")
+                    
+                    # [动作 3] 视觉变灰
+                    # 让 Label 变灰
+                    if hasattr(self, 'lbl_ch_count'):
+                        self.lbl_ch_count.config(foreground=COLOR_DISABLED)
+                    
+                    # (可选) 如果你想自动把通道数设置成检测到的值，可以解开下面这行：
+                    # self.var_n_channels.set(detected_channels)
+                    
+                else:
+                    print("[Metadata] File detected as 1-Channel (or unknown). User can manually split.")
+                    # 保持默认启用状态即可
+
+        except Exception as e:
+            print(f"Metadata inspection failed: {e}")
+            # 如果读取出错（比如不是 Tiff 文件），为了安全起见，保持选项开启，让用户手动决定
+            self.chk_inter.config(state="normal")
+            self.sp_channels.config(state="normal")
+            if hasattr(self, 'lbl_ch_count'):
+                self.lbl_ch_count.config(foreground=COLOR_NORMAL)
 
     def check_ready(self):
         current_tab = self.nb_import.index("current")

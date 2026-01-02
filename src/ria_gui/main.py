@@ -96,15 +96,24 @@ def main():
         print(f"Warning: Could not set AppUserModelID: {e}")
 
     root = tk.Tk()
-    
-    # [修改重点] 1. 检查是否有文件通过双击传入
+
+    # [修改重点] 1. 增强的文件检测逻辑
     startup_file = None
     if len(sys.argv) > 1:
-        # sys.argv[0] 是脚本名，sys.argv[1] 是第一个参数（文件路径）
+        # 获取传入的参数
         candidate = sys.argv[1]
+        
+        # 处理可能存在的引号包裹 (虽然 shell 通常会处理，但为了保险)
+        candidate = candidate.strip('"').strip("'")
+        
+        # 转换为绝对路径，防止工作目录不一致导致找不到文件
+        candidate = os.path.abspath(candidate)
+        
         if os.path.exists(candidate):
             startup_file = candidate
             print(f"Startup file detected: {startup_file}")
+        else:
+            print(f"Warning: Argument passed but file not found: {candidate}")
 
     # [修改重点] 2. 将 startup_file 传给 App
     app = RatioAnalyzerApp(root, startup_file=startup_file)
