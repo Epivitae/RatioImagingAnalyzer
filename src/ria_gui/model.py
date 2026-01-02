@@ -225,6 +225,85 @@ class AnalysisSession:
         # 自动重新计算背景
         self.recalc_background()
 
+
+    def align_data(self, progress_callback=None) -> None:
+        """
+        执行图像配准 (ECC 算法)。
+        
+        Args:
+            progress_callback (callable, optional): 
+                回调函数，签名需为 (current_frame, total_frames)。
+                用于向 UI 报告进度。
+                
+        Raises:
+            ImportError: 如果没有安装 OpenCV。
+            ValueError: 如果数据为空。
+        """
+        # 延迟导入，防止循环依赖或 OpenCV 未安装导致的崩溃
+        # 这样只有在用户真正点击“配准”时，才会检查 cv2
+        try:
+            from processing import align_stack_ecc
+        except ImportError:
+            try:
+                from .processing import align_stack_ecc
+            except ImportError:
+                raise ImportError("OpenCV (cv2) is required for alignment.")
+
+        if self.data1 is None:
+            raise ValueError("No data to align.")
+
+        # 1. 备份原始数据 (用于 Undo)
+        # 只有在第一次配准时备份；如果已经在配准状态，就不覆盖原始备份了
+        if self.data1_raw is None:
+            self.data1_raw = self.data1.copy()
+            # 如果是双通道，也备份 data2
+            if self.data2 is not None:
+                self.data2_raw = self.data2.copy()
+
+        # 2. 准备配准目标
+        # 如果是单通道(data2 is None)，就用 data1 自己对自己配准(虽然少见，但逻辑上通顺)
+        # 如果是双通道，根据 processing.py 的逻辑，通常是用一个参考另一个
+        target_data2 = self.data2 if self.data2 is not None else self.data1
+        
+        # 3. 调用纯算法 (耗时操作)
+        d1_aligned, d2_aligned = align_stack_ecc(
+            self.data1, 
+            target_data2, 
+            progress_callback=progress_callback
+        )
+
+        # 4. 更新 Model 状态
+        self.data1 = d1_aligned
+        if self.data2 is not None:
+            self.data2 = d2_aligned
+            
+        # 5. 配准后像素位置变了，必须重新计算背景值，否则背景扣除会错位
+        self.recalc_background()
+
+    def undo_alignment(self) -> bool:
+        """
+        撤销配准操作，恢复原始数据。
+        
+        Returns:
+            bool: 如果成功恢复返回 True，如果没有备份数据(说明没配准过)返回 False。
+        """
+        if self.data1_raw is not None:
+            # 恢复数据
+            self.data1 = self.data1_raw.copy()
+            if self.data2_raw is not None:
+                self.data2 = self.data2_raw.copy()
+            
+            # 清空备份 (表示回到了原始状态)
+            self.data1_raw = None
+            self.data2_raw = None
+            
+            # 数据变了，重新计算背景
+            self.recalc_background()
+            return True
+            
+        return False
+
+
     def recalc_background(self) -> None:
         """
         根据当前的 bg_percent 参数，重新计算所有通道的背景值。
@@ -327,3 +406,100 @@ class AnalysisSession:
             smooth_size, 
             log_scale
         )
+    
+    # =========================================================================
+    # Export / Save Logic
+    # =========================================================================
+
+    def export_processed_stack(self, 
+                               filepath: str, 
+                               params: dict, 
+                               progress_callback=None) -> None:
+        """
+        将当前参数处理后的所有帧保存为多页 Tiff 文件。
+        这个方法结合了 Processing (计算) 和 I/O (写入)，属于业务逻辑层。
+        
+        Args:
+            filepath (str): 保存路径。
+            params (dict): 处理参数 (int_thresh, ratio_thresh, smooth, log_scale 等)。
+            progress_callback (callable, optional): 进度回调 (current, total)。
+        """
+        if self.data1 is None:
+            raise ValueError("No data to save.")
+            
+        n_frames = self.data1.shape[0]
+        
+        # 使用 tifffile 的 Writer 来流式写入，节省内存
+        # bigtiff=True 允许保存超过 4GB 的文件，适合长序列成像
+        with tiff.TiffWriter(filepath, bigtiff=True) as tif:
+            for i in range(n_frames):
+                # 1. 核心：调用 Model 自身的处理管道获取图像
+                frame_data = self.get_processed_frame(
+                    frame_idx=i,
+                    int_thresh=params.get("int_thresh", 0),
+                    ratio_thresh=params.get("ratio_thresh", 0),
+                    smooth_size=params.get("smooth", 0),
+                    log_scale=params.get("log_scale", False),
+                    use_custom_bg=params.get("use_custom_bg", False)
+                )
+                
+                # 2. 写入文件
+                if frame_data is not None:
+                    tif.write(frame_data.astype(np.float32), contiguous=True)
+                
+                # 3. 报告进度
+                if progress_callback and i % 5 == 0:
+                    progress_callback(i, n_frames)
+        
+        # 最后报告一次完成
+        if progress_callback:
+            progress_callback(n_frames, n_frames)
+
+    def export_raw_ratio_stack(self, 
+                               filepath: str, 
+                               int_thresh: float, 
+                               ratio_thresh: float, 
+                               progress_callback=None) -> None:
+        """
+        导出“纯净”的比率堆栈 (不含 Log 变换，不含平滑，仅做基础阈值过滤)。
+        这通常用于需要将数据导入其他软件(如 ImageJ)进行进一步量化分析的场景。
+        """
+        if self.data1 is None:
+            raise ValueError("No data to save.")
+
+        n_frames = self.data1.shape[0]
+        
+        with tiff.TiffWriter(filepath, bigtiff=True) as tif:
+            for i in range(n_frames):
+                # 强制 smooth=0, log=False, use_custom_bg=False
+                # 仅保留最基础的阈值过滤，保留数据的原始性
+                frame_data = self.get_processed_frame(
+                    frame_idx=i,
+                    int_thresh=int_thresh,
+                    ratio_thresh=ratio_thresh,
+                    smooth_size=0, 
+                    log_scale=False,
+                    use_custom_bg=False
+                )
+                
+                if frame_data is not None:
+                    tif.write(frame_data.astype(np.float32), contiguous=True)
+
+                if progress_callback and i % 5 == 0:
+                    progress_callback(i, n_frames)
+        
+        if progress_callback:
+            progress_callback(n_frames, n_frames)
+
+    def export_current_frame(self, filepath: str, frame_idx: int, params: dict) -> None:
+        """保存单帧图像"""
+        img = self.get_processed_frame(
+            frame_idx=frame_idx,
+            int_thresh=params.get("int_thresh", 0),
+            ratio_thresh=params.get("ratio_thresh", 0),
+            smooth_size=params.get("smooth", 0),
+            log_scale=params.get("log_scale", False),
+            use_custom_bg=params.get("use_custom_bg", False)
+        )
+        if img is not None:
+            tiff.imwrite(filepath, img)

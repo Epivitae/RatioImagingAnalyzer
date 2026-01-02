@@ -2,7 +2,6 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, Toplevel
 import tkinter.font as tkfont
 import numpy as np
-import tifffile as tiff
 import os
 import sys
 import warnings
@@ -32,15 +31,6 @@ except ImportError:
     except ImportError as e:
         print(f"Import Error: {e}. Ensure all modules exist.")
 
-# --- Import Processing ---
-try:
-    from .processing import calculate_background, process_frame_ratio, align_stack_ecc
-except ImportError:
-    try:
-        from processing import calculate_background, process_frame_ratio, align_stack_ecc
-    except ImportError as e:
-        print(f"CRITICAL ERROR: Failed to import processing module. Reason: {e}")
-        raise e 
 
 try:
     from ._version import __version__
@@ -1295,23 +1285,51 @@ class RatioAnalyzerApp:
         self.pb_align["value"] = 0
         threading.Thread(target=self.alignment_task, daemon=True).start()
 
+
+
     def alignment_task(self):
         try:
-            if self.data1_raw is None:
-                self.data1_raw = self.data1.copy()
-                self.data2_raw = self.data2.copy()
+            # 定义回调函数，用于更新 GUI 的进度条
+            # 这里的逻辑是：Model 在后台线程跑，每处理一帧调用一次这个函数
+            # 我们用 self.root.after 把更新指令发回主线程，防止界面卡死或闪退
             def progress_cb(curr, total):
                 self.root.after(0, lambda: self.pb_align.configure(value=(curr/total)*100))
-            d1_aligned, d2_aligned = align_stack_ecc(self.data1, self.data2, progress_callback=progress_cb)
-            self.data1 = d1_aligned
-            self.data2 = d2_aligned
+            
+            # [CALL MODEL] 所有的脏活累活都在这里面
+            self.session.align_data(progress_callback=progress_cb)
+            
+            # 完成后通知 UI 刷新按钮状态
             self.root.after(0, self.alignment_done_ui)
+            
         except ImportError:
+            # 专门捕获缺少 OpenCV 的错误
             self.root.after(0, lambda: messagebox.showerror("Error", "OpenCV not found.\nPlease run: pip install opencv-python"))
             self.root.after(0, self.alignment_reset_ui)
         except Exception as e:
+            # 捕获其他未知错误
             self.root.after(0, lambda: messagebox.showerror("Alignment Error", str(e)))
             self.root.after(0, self.alignment_reset_ui)
+
+
+    def undo_alignment(self):
+        # [CALL MODEL] 尝试撤销
+        success = self.session.undo_alignment()
+        
+        if success:
+            # 如果撤销成功，刷新图像
+            self.update_plot()
+            
+            # 更新按钮样式 (变绿一下提示用户)
+            self.btn_undo_align.config(text=self.t("btn_undo_done"), style="Success.TButton")
+            self.btn_align.config(text=self.t("btn_align"), style="TButton")
+            
+            # 1秒后把撤销按钮变回灰色禁用状态
+            def restore_undo_btn():
+                try: 
+                    self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
+                except: pass
+            self.root.after(1000, restore_undo_btn)
+
 
     def alignment_done_ui(self):
         self.recalc_background()
@@ -1325,58 +1343,33 @@ class RatioAnalyzerApp:
         self.pb_align.pack_forget()
         self.btn_load.config(state="normal")
         self.btn_align.config(state="normal")
-
-    def undo_alignment(self):
-        if self.data1_raw is not None:
-            self.data1 = self.data1_raw.copy()
-            self.data2 = self.data2_raw.copy()
-            self.recalc_background()
-            self.update_plot()
-            self.data1_raw = None
-            self.data2_raw = None
-            self.btn_undo_align.config(text=self.t("btn_undo_done"), style="Success.TButton")
-            self.btn_align.config(text=self.t("btn_align"), style="TButton")
-            def restore_undo_btn():
-                try: self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
-                except: pass
-            self.root.after(1000, restore_undo_btn)
+    
 
     def get_processed_frame(self, frame_idx):
-        d_num, d_den, bg_num, bg_den = self.get_active_data()
-        if d_num is None: return None
+        """
+        [Refactored] 仅作为“参数收集器”。
+        收集 UI 上的滑块值、复选框状态，打包传给 Model，然后直接返回结果。
+        """
+        # 1. 收集 UI 参数
+        int_th = self.var_int_thresh.get()
+        ratio_th = self.var_ratio_thresh.get()
         
-        # === 逻辑分支 ===
+        # 只有当 Smooth > 0 时才传值，且转为 int
+        sm_val = int(self.var_smooth.get())
         
-        # 1. 原始通道模式 (Ch1, Ch2, Aux)
-        if self.view_mode == "ch1":
-            # 返回：(数据 - 背景)，并 Clip 掉负值
-            raw = d_num[frame_idx].astype(np.float32) - bg_num
-            return np.clip(raw, 0, None)
-            
-        elif self.view_mode == "ch2":
-            if d_den is None: return None
-            raw = d_den[frame_idx].astype(np.float32) - bg_den
-            return np.clip(raw, 0, None)
-            
-        elif self.view_mode.startswith("aux_"):
-            try:
-                idx = int(self.view_mode.split("_")[1])
-                if idx < len(self.data_aux):
-                    # Aux 也有背景吗？目前我们在 recalc_background 里算过 cached_bg_aux
-                    bg_val = self.cached_bg_aux[idx] if idx < len(self.cached_bg_aux) else 0
-                    raw = self.data_aux[idx][frame_idx].astype(np.float32) - bg_val
-                    return np.clip(raw, 0, None)
-            except: return None
+        is_log = self.log_var.get()
+        use_custom_bg = self.use_custom_bg_var.get()
 
-        # 2. Ratio / Main 模式 (默认)
-        # 这里维持原来的逻辑，进行比率计算、阈值过滤、平滑等
-        return process_frame_ratio(
-            d_num[frame_idx], 
-            d_den[frame_idx] if d_den is not None else None,
-            bg_num, bg_den,
-            self.var_int_thresh.get(), self.var_ratio_thresh.get(),
-            int(self.var_smooth.get()), False 
+        # 2. 委托给 Model 计算
+        return self.session.get_processed_frame(
+            frame_idx=frame_idx,
+            int_thresh=int_th,
+            ratio_thresh=ratio_th,
+            smooth_size=sm_val,
+            log_scale=is_log,
+            use_custom_bg=use_custom_bg
         )
+
 
     def toggle_scale_mode(self):
         if self.lock_var.get():
@@ -1470,49 +1463,114 @@ class RatioAnalyzerApp:
     
     def save_stack_task(self):
         try:
-            self.thread_safe_config(self.ui_elements["btn_save_stack"], state="disabled", text="⏳ Saving...")
+            # 1. 禁用按钮，防止重复点击
+            # 注意：在线程中操作 UI 最好用 after，或者确保这是在主线程触发前的状态更新
+            self.root.after(0, lambda: self.ui_elements["btn_save_stack"].config(state="disabled", text="⏳ Saving..."))
+            
+            # 2. 弹出文件保存对话框 (必须在主线程，这里通常没问题，因为 thread 是在 task 内部启动的还是外部？)
+            # 假设这个 task 是被 threading.Thread 调用的，那么 ask_filename 最好在外部做。
+            # 但为了兼容旧逻辑，如果原本就是直接调用的，我们先这样写。
+            # 如果这是一个线程函数，filedialog 可能会卡住。
+            # 为了稳妥，建议逻辑是：主线程获取路径 -> 启动子线程保存。
+            # 但为了少改动，我们假设这里运行环境和之前一致。
+            
             ts = datetime.datetime.now().strftime("%H%M%S")
+            # 注意：filedialog 并不是完全线程安全的，但在 Windows 上通常能跑
             path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Ratio_Stack_{ts}.tif")
-            if not path: return
-            with tiff.TiffWriter(path, bigtiff=True) as tif:
-                for i in range(self.data1.shape[0]):
-                    if i%10==0: self.thread_safe_config(self.ui_elements["btn_save_stack"], text=f"⏳ {i}/{self.data1.shape[0]}")
-                    tif.write(self.get_processed_frame(i).astype(np.float32), contiguous=True)
-            self.root.after(0, lambda: messagebox.showinfo("OK", f"Saved: {path}"))
-        except Exception as e: self.root.after(0, lambda: messagebox.showerror("Err", str(e)))
-        finally: 
-            self.thread_safe_config(self.ui_elements["btn_save_stack"], state="normal", text=self.t("btn_save_stack"))
+            
+            if not path: 
+                # 取消了，恢复按钮
+                self.root.after(0, lambda: self.ui_elements["btn_save_stack"].config(state="normal", text=self.t("btn_save_stack")))
+                return
+            
+            # 3. 收集参数 (从 UI 变量获取)
+            params = {
+                "int_thresh": self.var_int_thresh.get(),
+                "ratio_thresh": self.var_ratio_thresh.get(),
+                "smooth": int(self.var_smooth.get()),
+                "log_scale": self.log_var.get(),
+                "use_custom_bg": self.use_custom_bg_var.get()
+            }
 
+            # 4. 定义进度回调 (用于更新按钮文字)
+            def progress_cb(curr, total):
+                # 使用 root.after 确保 UI 更新在主线程执行
+                self.root.after(0, lambda: self.ui_elements["btn_save_stack"].config(text=f"⏳ {curr}/{total}"))
+
+            # 5. [CALL MODEL] 执行保存
+            self.session.export_processed_stack(path, params, progress_callback=progress_cb)
+            
+            # 6. 完成提示
+            self.root.after(0, lambda: messagebox.showinfo("Success", f"Stack saved to:\n{path}"))
+            
+        except Exception as e: 
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Save failed: {e}"))
+            # 打印报错堆栈以便调试
+            import traceback; traceback.print_exc()
+        finally: 
+            # 无论成功失败，最后都要恢复按钮
+            self.root.after(0, lambda: self.ui_elements["btn_save_stack"].config(state="normal", text=self.t("btn_save_stack")))
     def save_raw_thread(self):
         if self.data1 is None: return
         threading.Thread(target=self.save_raw_task).start()
 
+
+
     def save_raw_task(self):
         try:
-            self.thread_safe_config(self.ui_elements["btn_save_raw"], state="disabled", text="⏳ Saving...")
+            self.root.after(0, lambda: self.ui_elements["btn_save_raw"].config(state="disabled", text="⏳ Saving..."))
+            
             ts = datetime.datetime.now().strftime("%H%M%S")
             path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Clean_Ratio_Stack_{ts}.tif")
-            if not path: return
-            d_num, d_den, bg_num, bg_den = self.get_active_data()
-            with tiff.TiffWriter(path, bigtiff=True) as tif:
-                for i in range(d_num.shape[0]):
-                    if i%10==0: self.thread_safe_config(self.ui_elements["btn_save_raw"], text=f"⏳ {i}/{d_num.shape[0]}")
-                    ratio_frame = process_frame_ratio(
-                        d_num[i], d_den[i],
-                        bg_num, bg_den,
-                        self.var_int_thresh.get(), self.var_ratio_thresh.get(),
-                        smooth_size=0, log_scale=False
-                    )
-                    tif.write(ratio_frame.astype(np.float32), contiguous=True)
-            self.root.after(0, lambda: messagebox.showinfo("OK", f"Saved Clean Ratio Stack: {path}"))
-        except Exception as e: self.root.after(0, lambda: messagebox.showerror("Err", str(e)))
+            if not path: 
+                self.root.after(0, lambda: self.ui_elements["btn_save_raw"].config(state="normal", text=self.t("btn_save_raw")))
+                return
+            
+            # 收集参数
+            i_th = self.var_int_thresh.get()
+            r_th = self.var_ratio_thresh.get()
+            
+            def progress_cb(curr, total):
+                self.root.after(0, lambda: self.ui_elements["btn_save_raw"].config(text=f"⏳ {curr}/{total}"))
+
+            # [CALL MODEL]
+            self.session.export_raw_ratio_stack(path, i_th, r_th, progress_callback=progress_cb)
+            
+            self.root.after(0, lambda: messagebox.showinfo("Success", f"Raw Ratio saved to:\n{path}"))
+            
+        except Exception as e: 
+            self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
         finally: 
-            self.thread_safe_config(self.ui_elements["btn_save_raw"], state="normal", text=self.t("btn_save_raw"))
+            self.root.after(0, lambda: self.ui_elements["btn_save_raw"].config(state="normal", text=self.t("btn_save_raw")))
+
+
 
     def save_current_frame(self):
-        if self.data1 is None: return
-        path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Ratio_F{self.var_frame.get()}.tif")
-        if path: tiff.imwrite(path, self.get_processed_frame(self.var_frame.get()))
+        # 检查是否有数据 (通过 session 检查)
+        if self.session.data1 is None: return
+        
+        # 弹出对话框
+        ts = datetime.datetime.now().strftime("%H%M%S")
+        path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Ratio_Frame_{self.var_frame.get()}_{ts}.tif")
+        if not path: return
+        
+        # 收集参数
+        params = {
+            "int_thresh": self.var_int_thresh.get(),
+            "ratio_thresh": self.var_ratio_thresh.get(),
+            "smooth": int(self.var_smooth.get()),
+            "log_scale": self.log_var.get(),
+            "use_custom_bg": self.use_custom_bg_var.get()
+        }
+        
+        try:
+            # [CALL MODEL]
+            self.session.export_current_frame(path, self.var_frame.get(), params)
+            messagebox.showinfo("Success", f"Frame saved to:\n{path}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save frame: {e}")
+
+
 
     def on_frame_slide(self, v):
         self.var_frame.set(int(float(v))); self.lbl_frame.config(text=f"{self.var_frame.get()}/{self.data1.shape[0]-1}")
