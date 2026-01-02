@@ -1,105 +1,80 @@
 name: Build macOS App
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [ "main", "master" ]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
-  build-mac:
+  build:
     runs-on: macos-latest
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.9'
-          cache: 'pip'
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
+        cache: 'pip'
 
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          fi
-          # 强制安装所有可能缺失的库
-          pip install opencv-python numpy matplotlib scipy tifffile requests pyinstaller
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller create-dmg
 
-      - name: Precision Patching (Smart Fix)
-        run: |
-          cd src/ria_gui
-          
-          # 1. 修复 Windows 专用代码 (ctypes & icon)
-          sed -i '' 's/ctypes.windll/# ctypes.windll/g' main.py
-          sed -i '' 's/self.root.iconbitmap/pass # self.root.iconbitmap/g' gui.py
-          
-          # 2. 修改 main.py: 让它不再吞掉 'import gui' 的错误
-          # 将 'except ImportError:' 替换为 'except ImportError: raise'
-          # 这样如果 gui 模块加载失败，程序会直接报错显示原因，而不是去试 src
-          sed -i '' 's/except ImportError:/except ImportError: raise/g' main.py
-          
-          # 3. 修改 gui.py: 
-          # 关键点：我们只替换打印错误的那一行，不破坏它尝试相对/绝对导入的逻辑
-          # 查找 print(f"Import Error...) 并替换为 raise
-          sed -i '' 's/print(f"Import Error.*)/raise/g' gui.py
-          
-          echo "Patching complete. Import errors will now be visible."
+    - name: Extract Version
+      id: get_version
+      run: |
+        # 从 _version.py 读取版本号
+        VERSION=$(python3 -c "import re; print(re.search(r'__version__\s*=\s*[\"\']([^\"\']+)[\"\']', open('src/ria_gui/_version.py').read()).group(1))")
+        echo "Detected Version: $VERSION"
+        echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
 
-      - name: Sync Version
-        run: |
-          TAG_NAME=${{ github.ref_name }}
-          if [ -f "src/ria_gui/_version.py" ]; then
-            sed -i '' "s/__version__\s*=\s*[\"'].*[\"']/__version__ = \"$TAG_NAME\"/" src/ria_gui/_version.py
-          fi
+    - name: Build with PyInstaller
+      run: |
+        # 注意：这里已将 icon 指定为 app.icns
+        pyinstaller --noconfirm --onedir --windowed --clean \
+          --name "RIA_${{ env.APP_VERSION }}" \
+          --icon "src/ria_gui/assets/app.icns" \
+          --add-data "src/ria_gui/assets:assets" \
+          --hidden-import "cv2" \
+          --hidden-import "numpy" \
+          --hidden-import "matplotlib" \
+          --hidden-import "tkinter" \
+          --hidden-import "PIL" \
+          --hidden-import "tifffile" \
+          src/ria_gui/main.py
 
-      - name: Build with PyInstaller
-        run: |
-          APP_NAME="RIA_Liya_${{ github.ref_name }}_macOS"
-          
-          # 使用 --paths src/ria_gui 确保能找到同级模块
-          # 添加 --hidden-import 强制打包所有子模块
-          
-          pyinstaller --noconsole --windowed --name "$APP_NAME" \
-            --argv-emulation \
-            --target-arch arm64 \
-            --add-data "src/ria_gui/assets:assets" \
-            --icon "src/ria_gui/assets/app.icns" \
-            --paths "src/ria_gui" \
-            --hidden-import "gui" \
-            --hidden-import "gui_components" \
-            --hidden-import "processing" \
-            --hidden-import "io_utils" \
-            --hidden-import "components" \
-            --hidden-import "constants" \
-            --hidden-import "plot_window" \
-            --hidden-import "_version" \
-            --exclude-module matplotlib.tests \
-            --exclude-module numpy.random._examples \
-            --exclude-module tkinter.test \
-            --exclude-module unittest \
-            --exclude-module lib2to3 \
-            src/ria_gui/main.py
+    - name: Sign App (Ad-hoc)
+      run: |
+        # Apple Silicon (M1/M2) 需要签名才能运行
+        codesign --force --deep --sign - "dist/RIA_${{ env.APP_VERSION }}.app"
 
-      - name: Package Application
-        run: |
-          cd dist
-          APP_NAME="RIA_Liya_${{ github.ref_name }}_macOS"
-          zip -r "$APP_NAME.zip" "$APP_NAME.app"
+    - name: Create DMG Installer
+      run: |
+        mkdir -p dist/dmg
+        
+        # 使用 create-dmg 打包，并使用相同的 icns 作为磁盘镜像图标
+        create-dmg \
+          --volname "RIA Installer" \
+          --volicon "src/ria_gui/assets/app.icns" \
+          --window-pos 200 120 \
+          --window-size 600 400 \
+          --icon-size 100 \
+          --icon "RIA_${{ env.APP_VERSION }}.app" 200 190 \
+          --hide-extension "RIA_${{ env.APP_VERSION }}.app" \
+          --app-drop-link 400 185 \
+          "dist/dmg/RIA_${{ env.APP_VERSION }}_macOS.dmg" \
+          "dist/RIA_${{ env.APP_VERSION }}.app"
 
-      - name: Upload to Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: dist/*.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Artifact for Testing
-        uses: actions/upload-artifact@v4
-        with:
-          name: macOS-App-Build
-          path: dist/*.zip
-          retention-days: 5
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: RIA-macOS-${{ env.APP_VERSION }}
+        path: dist/dmg/*.dmg
+        if-no-files-found: error
