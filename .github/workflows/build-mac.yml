@@ -1,81 +1,93 @@
 name: Build macOS App
 
-# 触发条件：当发布一个新的 Release 时触发
+# 触发机制：
+# 1. 当发布新的 Release (published) 时自动触发
+# 2. 允许手动点击按钮触发 (workflow_dispatch)，方便开发测试
 on:
   release:
     types: [published]
-  # 允许手动触发，方便测试
   workflow_dispatch:
 
 jobs:
   build-mac:
-    runs-on: macos-latest # 使用最新的 macOS 环境 (目前是 Apple Silicon M1/M2)
+    runs-on: macos-latest # 使用最新的 macOS 环境 (目前是 Apple Silicon，兼容性较好)
     
     steps:
-      # 1. 拉取代码
+      # --- 1. 拉取代码 ---
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 设置 Python 环境
+      # --- 2. 设置 Python 环境 ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.9' # 建议固定一个稳定版本
           cache: 'pip'
 
-      # 3. 安装依赖
+      # --- 3. 安装依赖 ---
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          # 安装你的项目依赖
-          pip install -r requirements.txt
+          # 安装项目依赖
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           # 安装打包工具
           pip install pyinstaller
 
-      # 4. 同步版本号 (关键步骤)
-      # 将 _version.py 中的版本号修改为当前 Release 的 Tag (例如 v1.7.10)
+      # --- 4. 同步版本号 ---
+      # 将 _version.py 中的版本号修改为当前 Release 的 Tag (例如 v1.8.0)
+      # 如果是手动触发 (main 分支)，版本号会显示为 main
       - name: Sync Version
         run: |
-          # 获取 Tag 名称，如果是手动触发则使用 "manual-build"
           TAG_NAME=${{ github.ref_name }}
           echo "Building version: $TAG_NAME"
           
-          # 使用 sed 命令替换 _version.py 中的版本号
-          # 假设 _version.py 路径为 src/ria_gui/_version.py
-          sed -i '' "s/__version__\s*=\s*[\"'].*[\"']/__version__ = \"$TAG_NAME\"/" src/ria_gui/_version.py
+          # macOS 的 sed 语法需要 -i ''
+          # 假设 _version.py 位于 src/ria_gui/_version.py
+          if [ -f "src/ria_gui/_version.py" ]; then
+            sed -i '' "s/__version__\s*=\s*[\"'].*[\"']/__version__ = \"$TAG_NAME\"/" src/ria_gui/_version.py
+          else
+            echo "Warning: _version.py not found, skipping version sync."
+          fi
 
-      # 5. 执行打包 (PyInstaller)
-      # 这里我们不直接运行 build-exe.py，因为它是为 Windows 设计的（包含 .exe 后缀和 Windows 路径）
-      # 我们直接在 YAML 里写适配 Mac 的命令
+      # --- 5. 执行打包 (PyInstaller) ---
       - name: Build with PyInstaller
         run: |
-          # 定义应用名称
+          # 定义应用名称，包含版本号
           APP_NAME="RIA_Liya_${{ github.ref_name }}_macOS"
           
           # 运行 PyInstaller
-          # --windowed: 无控制台
-          # --noconsole: 同上
-          # --onedir: Mac 推荐打包成 .app 文件夹而不是单文件，启动速度更快且兼容性更好
-          # --icon: Mac 需要 .icns 格式图标，如果没有会自动使用默认
+          # --windowed: 无控制台模式
+          # --onedir: 打包成 .app 文件夹 (Mac 推荐方式)
+          # --icon: 指定 .icns 图标文件 (请确保你已经上传了该文件)
+          # --add-data: 包含资源文件
+          # --exclude-module: 排除不必要的库减小体积
           pyinstaller --noconsole --windowed --name "$APP_NAME" \
             --add-data "src/ria_gui/assets:assets" \
+            --icon "src/ria_gui/assets/app.icns" \
             --paths "src/ria_gui" \
             --exclude-module matplotlib.tests \
             --exclude-module tkinter.test \
             --exclude-module unittest \
             src/ria_gui/main.py
 
-      # 6. 处理打包产物
-      # Mac 的产物是一个 .app 文件夹 (dist/APP_NAME.app)
-      # GitHub Release 无法直接上传文件夹，必须压缩成 .zip 或 .dmg
+      # --- 6. 压缩打包产物 ---
+      # 将生成的 .app 文件夹压缩为 .zip，以便上传和分发
       - name: Package Application
         run: |
           cd dist
           APP_NAME="RIA_Liya_${{ github.ref_name }}_macOS"
-          # 将 .app 打包为 .zip
-          zip -r "$APP_NAME.zip" "$APP_NAME.app"
+          
+          # 检查 .app 是否存在
+          if [ -d "$APP_NAME.app" ]; then
+            echo "Packaging $APP_NAME.app ..."
+            zip -r "$APP_NAME.zip" "$APP_NAME.app"
+          else
+            echo "Error: App build failed, directory not found."
+            exit 1
+          fi
 
-      # 7. 上传到 Release
+      # --- 7. 上传到 Release (仅正式发布时) ---
+      # 只有当触发事件是 Tag 推送（即发布 Release）时才执行
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
@@ -83,3 +95,14 @@ jobs:
           files: dist/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- 8. 上传测试产物 (Artifacts) ---
+      # 无论何时都执行。
+      # 用于在开发阶段（手动触发时）下载 zip 包进行测试。
+      # 下载位置：GitHub Actions -> 对应运行记录 -> 底部 Artifacts
+      - name: Upload Artifact for Testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS-App-Build
+          path: dist/*.zip
+          retention-days: 5
