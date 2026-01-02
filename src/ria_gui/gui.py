@@ -143,6 +143,7 @@ class RatioAnalyzerApp:
         CARD_COLOR = "#FFFFFF"
         TEXT_COLOR = "#333333"
         BLUE_COLOR = "#0056b3"
+        GREEN_COLOR = "#28a745"
         
         style.configure(".", background=BG_COLOR, foreground=TEXT_COLOR, font=self.f_normal)
         style.configure("TLabel", background=BG_COLOR, font=self.f_normal)
@@ -172,6 +173,22 @@ class RatioAnalyzerApp:
         style.configure("Toolbutton", background=CARD_COLOR, relief="flat", borderwidth=0, padding=4)
         style.map("Toolbutton", background=[("selected", "#E8F0FE")], relief=[("selected", "sunken")])
         
+        style.configure(
+            "BadgeBlue.TLabel", 
+            background=BLUE_COLOR, 
+            foreground="white", 
+            font=("Segoe UI", 9, "bold"),
+            padding=(8, 2)  
+        )
+
+        style.configure(
+            "BadgeGreen.TLabel", 
+            background=GREEN_COLOR, 
+            foreground="white", 
+            font=("Segoe UI", 9, "bold"),
+            padding=(8, 2)
+        )
+
         self.style = style
 
     def get_asset_path(self, filename):
@@ -300,22 +317,45 @@ class RatioAnalyzerApp:
         self.grp_file = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
         self.grp_file.pack(fill="x", pady=(0, 10))
         self.ui_elements["grp_file"] = self.grp_file
+        
         self.nb_import = ttk.Notebook(self.grp_file)
         self.nb_import.pack(fill="x", expand=True)
         self.nb_import.bind("<<NotebookTabChanged>>", lambda e: self.check_ready())
+        
+        # --- Tab 1: Separate Files ---
         self.tab_sep = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
         self.nb_import.add(self.tab_sep, text=" Separate Files ") 
         self.ui_elements["tab_sep"] = lambda text: self.nb_import.tab(0, text=text)
         self.create_compact_file_row(self.tab_sep, "btn_c1", self.select_c1, "lbl_c1_path")
         self.create_compact_file_row(self.tab_sep, "btn_c2", self.select_c2, "lbl_c2_path")
         
-        # Tab Dual Layout for Multichannel
+        # --- Tab 2: Single File (Modified) ---
         self.tab_dual = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
         self.nb_import.add(self.tab_dual, text=" Single File ")
         self.ui_elements["tab_dual"] = lambda text: self.nb_import.tab(1, text=text)
         
-        self.create_compact_file_row(self.tab_dual, "btn_dual", self.select_dual, "lbl_dual_path")
+        # [修改] 手动构建这一行，以便插入通道计数标签
+        f_row = ttk.Frame(self.tab_dual, style="White.TFrame")
+        f_row.pack(fill="x", pady=1)
         
+        # 按钮
+        self.btn_dual = ttk.Button(f_row, command=self.select_dual, text="📂 Select File")
+        self.btn_dual.pack(side="left")
+        self.ui_elements["btn_dual"] = self.btn_dual
+        
+        # [新增] 通道数指示器 (Badge) - 放在最右侧
+        # 默认隐藏或显示空，颜色设为蓝色
+        self.lbl_ch_indicator = ttk.Label(f_row, text="", style="White.TLabel")
+        self.lbl_ch_indicator.pack(side="right", padx=(0, 5))
+        
+        # 路径显示 (占据剩余空间)
+        self.lbl_dual_path = ttk.Label(f_row, text="...", foreground="gray", anchor="w", style="White.TLabel")
+        self.lbl_dual_path.pack(side="left", padx=5, fill="x", expand=True)
+        
+        self.lbl_ch_indicator = ttk.Label(f_row, text="", style="BadgeBlue.TLabel")
+        self.lbl_ch_indicator.pack(side="right", padx=(0, 5))
+
+
         # Mixed Stacks & Channel Count Row
         f_inter = ttk.Frame(self.tab_dual, style="White.TFrame")
         f_inter.pack(fill="x", pady=(2, 0))
@@ -324,10 +364,9 @@ class RatioAnalyzerApp:
         self.chk_inter.pack(side="left")
         self.ui_elements["chk_interleaved"] = self.chk_inter
         
-        # Channel Count Spinbox
         ttk.Label(f_inter, text="Ch Count:", style="White.TLabel").pack(side="left", padx=(10, 2))
         self.var_n_channels = tk.IntVar(value=2)
-        self.sp_channels = ttk.Spinbox(f_inter, from_=2, to=20, textvariable=self.var_n_channels, width=3)
+        self.sp_channels = ttk.Spinbox(f_inter, from_=1, to=20, textvariable=self.var_n_channels, width=3)
         self.sp_channels.pack(side="left")
         
         # Action Buttons
@@ -340,7 +379,8 @@ class RatioAnalyzerApp:
 
         self.btn_clear_data = ttk.Button(f_actions, text="🗑", width=8, command=self.clear_all_data, style="Gray.TButton")
         self.btn_clear_data.pack(side="right", fill="y")
-
+    
+    
     def setup_preprocess_group(self):
         self.grp_pre = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
         self.grp_pre.pack(fill="x", pady=(0, 10))
@@ -685,35 +725,65 @@ class RatioAnalyzerApp:
             if current_tab == 0:
                 d1, d2 = read_separate_files(self.c1_path, self.c2_path)
                 channels = [d1, d2]
+                # 分离文件模式，肯定是2通道，这里不需要更新 Single File 的标签
             else:
                 n_ch = self.var_n_channels.get() if self.is_interleaved_var.get() else 2
                 channels = read_and_split_multichannel(self.dual_path, self.is_interleaved_var.get(), n_ch)
+                
+                # [修改] 根据通道数，动态应用“样式”和“文字”
+                count = len(channels)
+                if count == 1:
+                    # 激活绿色徽章样式
+                    self.lbl_ch_indicator.config(
+                        text=f" 1 Ch (Int) ", 
+                        style="BadgeGreen.TLabel" 
+                    )
+                else:
+                    # 激活蓝色徽章样式
+                    self.lbl_ch_indicator.config(
+                        text=f" {count} Chs (Ratio) ", 
+                        style="BadgeBlue.TLabel"
+                    )
 
-            if len(channels) == 2:
+            # ... (后续代码保持不变) ...
+            if len(channels) == 1:
+                self.data1 = channels[0]
+                self.data2 = None
+                self.data_aux = []
+                self.btn_align.config(state="disabled")
+                self.ui_elements["lbl_ratio_thr"].config(foreground="gray")
+
+            elif len(channels) == 2:
                 self.data1 = channels[0]
                 self.data2 = channels[1]
                 self.data_aux = []
+                self.btn_align.config(state="normal")
+                self.ui_elements["lbl_ratio_thr"].config(foreground="black")
+
             elif len(channels) > 2:
                 self.root.config(cursor="")
                 roles = self.ask_channel_roles(len(channels))
-                
                 idx_num = roles["num"]
                 idx_den = roles["den"]
-                
                 self.data1 = channels[idx_num]
                 self.data2 = channels[idx_den]
-                
                 self.data_aux = []
                 for i, d in enumerate(channels):
                     if i != idx_num and i != idx_den:
                         self.data_aux.append(d)
+                self.btn_align.config(state="normal")
+                self.ui_elements["lbl_ratio_thr"].config(foreground="black")
             else:
-                raise ValueError(f"Channel count < 2 (Got {len(channels)})")
+                raise ValueError(f"No channels loaded.")
 
             self.data1_raw = None
             self.data2_raw = None
             self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
-            self.btn_align.config(state="normal", text=self.t("btn_align"), style="TButton")
+            
+            if self.data2 is not None:
+                self.btn_align.config(state="normal", text=self.t("btn_align"), style="TButton")
+            else:
+                self.btn_align.config(state="disabled")
 
             self.recalc_background()
             self.frame_scale.configure(to=self.data1.shape[0]-1)
@@ -726,7 +796,6 @@ class RatioAnalyzerApp:
             messagebox.showerror("Error", str(e))
         finally:
             self.root.config(cursor="")
-
     def clear_all_data(self):
         self.is_playing = False
         self.btn_play.config(text="▶")
@@ -748,6 +817,10 @@ class RatioAnalyzerApp:
         self.lbl_c2_path.config(text=self.t("lbl_no_file"))
         self.lbl_dual_path.config(text=self.t("lbl_no_file"))
         
+        # [新增] 重置通道数标签
+        if hasattr(self, 'lbl_ch_indicator'):
+            self.lbl_ch_indicator.config(text="", style="White.TLabel")
+        
         self.btn_load.config(state="disabled")
         self.btn_align.config(state="disabled", text=self.t("btn_align"), style="TButton")
         self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
@@ -762,6 +835,7 @@ class RatioAnalyzerApp:
         self.frame_scale.configure(to=1, value=0)
         self.lbl_frame.config(text="0/0")
         self.pb_align.pack_forget()
+
 
     def update_mode_options(self):
         txt_c1_c2 = self.t("mode_c1_c2") if "mode_c1_c2" in LANG_MAP else "Ch1 / Ch2"
@@ -788,10 +862,16 @@ class RatioAnalyzerApp:
             bg1 = self.cached_bg1
             bg2 = self.cached_bg2
 
+        # [修改] 单通道处理
+        if self.data2 is None:
+             # 返回 (Data1, None, BG1, 0)
+             return self.data1, None, bg1, 0
+
         if self.ratio_mode_var.get() == "c1_c2":
             return self.data1, self.data2, bg1, bg2
         else:
             return self.data2, self.data1, bg2, bg1
+    
     def draw_bg_roi_action(self):
         # Trigger RoiManager to start drawing in 'background' mode
         self.roi_mgr.start_drawing(mode="rect", is_background=True)
@@ -869,7 +949,13 @@ class RatioAnalyzerApp:
         try:
             p = self.var_bg.get()
             self.cached_bg1 = calculate_background(self.data1, p)
-            self.cached_bg2 = calculate_background(self.data2, p)
+            
+            # [修改] 只有当 data2 存在时才计算 bg2
+            if self.data2 is not None:
+                self.cached_bg2 = calculate_background(self.data2, p)
+            else:
+                self.cached_bg2 = 0.0
+
             self.cached_bg_aux = []
             if hasattr(self, 'data_aux'):
                 for aux in self.data_aux:
@@ -956,12 +1042,14 @@ class RatioAnalyzerApp:
         d_num, d_den, bg_num, bg_den = self.get_active_data()
         if d_num is None: return None
         return process_frame_ratio(
-            d_num[frame_idx], d_den[frame_idx],
+            d_num[frame_idx], 
+            d_den[frame_idx] if d_den is not None else None, # [修改] 传递 None 而不是报错
             bg_num, bg_den,
             self.var_int_thresh.get(), self.var_ratio_thresh.get(),
             int(self.var_smooth.get()), False 
         )
-    
+
+
     def toggle_scale_mode(self):
         if self.lock_var.get():
             self.entry_vmin.config(state="normal")

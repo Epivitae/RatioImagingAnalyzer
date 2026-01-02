@@ -25,11 +25,11 @@ LANG_MAP = {
 
 
     "tab_sep": {"cn": " 分别导入 (两文件) ", "en": " Separate Files "},
-    "tab_dual": {"cn": " 单文件双通道 ", "en": " Single Dual-Ch File "},
+    "tab_dual": {"cn": " 单文件多通道 ", "en": " Single File "},
     
     "btn_c1": {"cn": "📂 通道 1", "en": "📂 Ch1"},
     "btn_c2": {"cn": "📂 通道 2", "en": "📂 Ch2"},
-    "btn_dual": {"cn": "📂 选择双通道文件", "en": "📂 Select Dual-Ch File"},
+    "btn_dual": {"cn": "📂 选择多通道文件", "en": "📂 Select File"},
     "chk_interleaved": {"cn": "交错堆栈 (Ch1,Ch2,Ch1..)", "en": "Mixed Stacks (Ch1, Ch2, Ch3)"},
     
     "btn_load": {"cn": "🚀 加载并分析", "en": "🚀 Load & Analyze"},

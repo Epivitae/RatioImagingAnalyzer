@@ -3,10 +3,13 @@ import tifffile as tiff
 import numpy as np
 import warnings
 
+
+
 def read_and_split_multichannel(file_path, is_interleaved, n_channels=2):
     """
     Universal reading function supporting arbitrary channel counts.
     Returns: List [ch0, ch1, ch2, ...]
+    [修改] 增加了对单通道 (n_channels=1) 和普通 3D Stack 的支持。
     """
     try:
         # Read raw data without forcing type conversion to save memory
@@ -22,34 +25,40 @@ def read_and_split_multichannel(file_path, is_interleaved, n_channels=2):
              raise ValueError(f"Interleaved mode requires 3D stack (T, Y, X). Current shape: {raw_data.shape}")
         
         n_frames = raw_data.shape[0]
-        # Truncate extra frames that don't fit the cycle
-        remainder = n_frames % n_channels
-        if remainder != 0:
-            raw_data = raw_data[:-remainder]
-            
-        # Slice to separate channels without extra memory copy
-        for c in range(n_channels):
-            # start=c, step=n_channels
-            channels.append(raw_data[c::n_channels])
+        
+        # [修改] 如果指定通道数为 1，直接返回原数据
+        if n_channels == 1:
+            channels.append(raw_data)
+        else:
+            # Truncate extra frames that don't fit the cycle
+            remainder = n_frames % n_channels
+            if remainder != 0:
+                raw_data = raw_data[:-remainder]
+                
+            # Slice to separate channels without extra memory copy
+            for c in range(n_channels):
+                # start=c, step=n_channels
+                channels.append(raw_data[c::n_channels])
 
     # Logic 2: Hyperstack (4D) - e.g., (T, C, Y, X)
     else:
         if raw_data.ndim == 4:
             # Case A: Standard (T, C, Y, X) -> shape[1] is channel
-            if raw_data.shape[1] >= 2 and raw_data.shape[1] <= 10: 
+            if raw_data.shape[1] >= 1 and raw_data.shape[1] <= 10: # [修改] 允许 >= 1
                 for c in range(raw_data.shape[1]):
                     channels.append(raw_data[:, c, :, :])
             
             # Case B: ImageJ format (C, T, Y, X) -> shape[0] is channel
-            # Heuristic: Channels usually <10, Time frames usually >10
-            elif raw_data.shape[0] >= 2 and raw_data.shape[0] <= 10 and raw_data.shape[1] > 10:
+            elif raw_data.shape[0] >= 1 and raw_data.shape[0] <= 10 and raw_data.shape[1] > 10: # [修改] 允许 >= 1
                  for c in range(raw_data.shape[0]):
                      channels.append(raw_data[c, :, :, :])
             else:
                 raise ValueError(f"Cannot identify channel dimension (T,C,Y,X or C,T,Y,X). Current shape: {raw_data.shape}")
                     
         elif raw_data.ndim == 3:
-             raise ValueError("3D data detected. If this is an interleaved multichannel stack, please check 'Mixed Stacks' and set the correct Channel Count.")
+             # [修改] 遇到 3D 数据且没勾选 Interleaved，视为单通道 Time-lapse
+             # 形状通常是 (Time, Y, X)
+             channels.append(raw_data)
         else:
             raise ValueError(f"Unsupported dimensions: {raw_data.shape}")
 
@@ -62,6 +71,7 @@ def read_and_split_multichannel(file_path, is_interleaved, n_channels=2):
     channels = [c[:min_len] for c in channels]
 
     return channels
+
 
 def read_and_split_dual_channel(file_path, is_interleaved):
     """Wrapper for backward compatibility, defaults to 2 channels."""

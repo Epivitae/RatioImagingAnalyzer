@@ -52,13 +52,24 @@ def smooth_nan_safe(arr, size):
 def process_frame_ratio(d1_frame, d2_frame, bg1, bg2, int_thresh, ratio_thresh, smooth_size, log_scale=False):
     """
     核心比率计算函数。
+    [修改] 增加了单通道模式支持 (d2_frame is None)。
     """
     # 1. 类型转换 float32 防止下溢
     img1 = d1_frame.astype(np.float32) - bg1
-    img2 = d2_frame.astype(np.float32) - bg2
-
-    # 2. Clip 负值
     img1 = np.clip(img1, 0, None)
+
+    # [修改] 单通道模式检测
+    if d2_frame is None:
+        # 单通道模式：仅做强度阈值处理
+        if int_thresh > 0:
+            img1[img1 < int_thresh] = np.nan # 或者 0，视需求而定，这里用 NaN 保持背景干净
+        
+        # 单通道通常不需要 Log Scale，但如果你想保留也可以
+        # if log_scale: img1 = np.log1p(img1)
+        return img1
+
+    # --- 以下为原本的双通道比率逻辑 ---
+    img2 = d2_frame.astype(np.float32) - bg2
     img2 = np.clip(img2, 0, None)
 
     # 3. 计算 Ratio
@@ -83,6 +94,7 @@ def process_frame_ratio(d1_frame, d2_frame, bg1, bg2, int_thresh, ratio_thresh, 
         ratio = np.log1p(ratio)
         
     return ratio
+
 
 def align_stack_ecc(data1, data2, progress_callback=None):
     """

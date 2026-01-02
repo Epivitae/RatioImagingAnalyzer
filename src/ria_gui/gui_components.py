@@ -505,26 +505,34 @@ class RoiManager:
                 y_idxs, x_idxs = np.where(mask)
                 
                 roi_num = data_num[:, y_idxs, x_idxs].astype(np.float32) - bg_num
-                roi_den = data_den[:, y_idxs, x_idxs].astype(np.float32) - bg_den
-                
                 roi_num = np.clip(roi_num, 0, None)
-                roi_den = np.clip(roi_den, 0, None)
-                
-                mask_valid = (roi_num > int_thresh) & (roi_den > int_thresh) & (roi_den > 0.001)
-                
-                roi_ratio = np.full_like(roi_num, np.nan)
-                np.divide(roi_num, roi_den, out=roi_ratio, where=mask_valid)
-                if ratio_thresh > 0: roi_ratio[roi_ratio < ratio_thresh] = np.nan
-                
-                means_ratio = np.nanmean(roi_ratio, axis=1)
-                means_ratio = np.nan_to_num(means_ratio, nan=0.0)
                 
                 means_num = np.nanmean(roi_num, axis=1)
                 means_num = np.nan_to_num(means_num, nan=0.0)
+
+                # [修改] 单通道逻辑分支
+                if data_den is None:
+                    # 单通道模式：Ratio 曲线直接等于 Intensity (Num)
+                    means_ratio = means_num.copy()
+                    means_den = np.zeros_like(means_num) # 分母为 0
+                else:
+                    # 双通道模式：正常计算比率
+                    roi_den = data_den[:, y_idxs, x_idxs].astype(np.float32) - bg_den
+                    roi_den = np.clip(roi_den, 0, None)
+                    
+                    mask_valid = (roi_num > int_thresh) & (roi_den > int_thresh) & (roi_den > 0.001)
+                    
+                    roi_ratio = np.full_like(roi_num, np.nan)
+                    np.divide(roi_num, roi_den, out=roi_ratio, where=mask_valid)
+                    if ratio_thresh > 0: roi_ratio[roi_ratio < ratio_thresh] = np.nan
+                    
+                    means_ratio = np.nanmean(roi_ratio, axis=1)
+                    means_ratio = np.nan_to_num(means_ratio, nan=0.0)
+                    
+                    means_den = np.nanmean(roi_den, axis=1)
+                    means_den = np.nan_to_num(means_den, nan=0.0)
                 
-                means_den = np.nanmean(roi_den, axis=1)
-                means_den = np.nan_to_num(means_den, nan=0.0)
-                
+                # Aux 通道处理
                 means_aux = []
                 for i, d_aux in enumerate(data_aux_list):
                     bg_val = bg_aux_list[i] if i < len(bg_aux_list) else 0
@@ -537,8 +545,10 @@ class RoiManager:
 
                 if do_norm:
                     means_ratio = calc_dff(means_ratio)
+                    # num 和 den 是否需要归一化视需求而定，通常保持一致
                     means_num = calc_dff(means_num)
-                    means_den = calc_dff(means_den)
+                    if data_den is not None:
+                         means_den = calc_dff(means_den)
                 
                 results.append({
                     'id': item['id'],
@@ -558,7 +568,12 @@ class RoiManager:
             
             try: mode_var = self.app.ratio_mode_var.get()
             except: mode_var = "c1_c2"
-            labels = ("Ch1", "Ch2") if mode_var == "c1_c2" else ("Ch2", "Ch1")
+            
+            # [修改] 标签适配
+            if data_den is None:
+                labels = ("Intensity", "None")
+            else:
+                labels = ("Ch1", "Ch2") if mode_var == "c1_c2" else ("Ch2", "Ch1")
 
             self.app.root.after(0, lambda: self.plot_window_controller.update_data(
                 times, results, unit, is_log, do_norm, labels
@@ -568,6 +583,7 @@ class RoiManager:
             print(f"Calc Error: {e}")
         finally:
             self.is_calculating = False
+
 
     def _process_background_roi(self, roi_data):
         """Calculate mean intensity in the ROI across time and update App."""
