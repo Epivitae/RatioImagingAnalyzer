@@ -152,3 +152,40 @@ def align_stack_ecc(data1, data2, progress_callback=None):
 
     if is_c1_ref: return aligned_ref, aligned_move
     else: return aligned_move, aligned_ref
+
+
+# src/processing.py (追加在文件末尾)
+
+def extract_kymograph(stack, p1, p2):
+    """
+    从图像堆栈中提取沿直线的 Kymograph 数据。
+    stack: (Frames, Height, Width)
+    p1: (x1, y1) 起点
+    p2: (x2, y2) 终点
+    返回: (Frames, Distance) 的 2D 矩阵
+    """
+    import numpy as np
+    
+    # 1. 计算两点间距离 (作为 Kymograph 的宽度)
+    x1, y1 = p1
+    x2, y2 = p2
+    length = int(np.hypot(x2 - x1, y2 - y1))
+    
+    if length == 0: return None
+
+    # 2. 生成采样坐标 (使用线性插值)
+    x_coords = np.linspace(x1, x2, length)
+    y_coords = np.linspace(y1, y2, length)
+    
+    # 3. 转换为整数索引并限制在图像范围内
+    h, w = stack.shape[1], stack.shape[2]
+    x_idxs = np.clip(x_coords.astype(int), 0, w - 1)
+    y_idxs = np.clip(y_coords.astype(int), 0, h - 1)
+    
+    # 4. 利用 NumPy 高级索引一次性提取所有帧的数据
+    # stack 形状为 (T, Y, X)，我们提取所有 T，特定的 Y 和 X
+    kymo_matrix = stack[:, y_idxs, x_idxs]
+    
+    return kymo_matrix
+
+

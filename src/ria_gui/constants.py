@@ -66,7 +66,7 @@ LANG_MAP = {
     "msg_new_ver": {"cn": "发现新版本: {}\n是否前往下载？", "en": "New version found: {}\nGo to download page?"},
     "title_update": {"cn": "版本更新", "en": "Update Check"},
     "err_check": {"cn": "检查更新失败: ", "en": "Check failed: "},
-    "lbl_shape": {"cn": "ROI 形状:", "en": "ROI Shape:"},
+    "lbl_shape": {"cn": "ROI:", "en": "ROI:"},
     "lbl_ratio_mode": {"cn": "比率模式:", "en": "Ratio Mode:"},
     "mode_c1_c2": {"cn": "Ch1 / Ch2 (默认)", "en": "Ch1 / Ch2 (Default)"},
     "mode_c2_c1": {"cn": "Ch2 / Ch1 (反转)", "en": "Ch2 / Ch1 (Inverted)"},
