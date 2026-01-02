@@ -519,19 +519,18 @@ class RoiManager:
 
                 y_idxs, x_idxs = np.where(mask)
                 
+                # --- Num / Den Calculation ---
                 roi_num = data_num[:, y_idxs, x_idxs].astype(np.float32) - bg_num
                 roi_num = np.clip(roi_num, 0, None)
-                
                 means_num = np.nanmean(roi_num, axis=1)
                 means_num = np.nan_to_num(means_num, nan=0.0)
 
-                # [修改] 单通道逻辑分支
                 if data_den is None:
-                    # 单通道模式：Ratio 曲线直接等于 Intensity (Num)
+                    # 单通道模式
                     means_ratio = means_num.copy()
-                    means_den = np.zeros_like(means_num) # 分母为 0
+                    means_den = np.zeros_like(means_num)
                 else:
-                    # 双通道模式：正常计算比率
+                    # 双通道模式
                     roi_den = data_den[:, y_idxs, x_idxs].astype(np.float32) - bg_den
                     roi_den = np.clip(roi_den, 0, None)
                     
@@ -543,11 +542,10 @@ class RoiManager:
                     
                     means_ratio = np.nanmean(roi_ratio, axis=1)
                     means_ratio = np.nan_to_num(means_ratio, nan=0.0)
-                    
                     means_den = np.nanmean(roi_den, axis=1)
                     means_den = np.nan_to_num(means_den, nan=0.0)
                 
-                # Aux 通道处理
+                # --- Aux Calculation ---
                 means_aux = []
                 for i, d_aux in enumerate(data_aux_list):
                     bg_val = bg_aux_list[i] if i < len(bg_aux_list) else 0
@@ -560,7 +558,6 @@ class RoiManager:
 
                 if do_norm:
                     means_ratio = calc_dff(means_ratio)
-                    # num 和 den 是否需要归一化视需求而定，通常保持一致
                     means_num = calc_dff(means_num)
                     if data_den is not None:
                          means_den = calc_dff(means_den)
@@ -581,24 +578,40 @@ class RoiManager:
             elif unit == "h": mult = 1.0/3600.0
             times = np.arange(len(results[0]['means'])) * interval * mult
             
+            # === [修改重点] 构建 channel_info 字典代替简单的 labels 元组 ===
             try: mode_var = self.app.ratio_mode_var.get()
             except: mode_var = "c1_c2"
             
-            # [修改] 标签适配
+            # 1. 基础标签
             if data_den is None:
                 labels = ("Intensity", "None")
+                has_ratio = False
             else:
                 labels = ("Ch1", "Ch2") if mode_var == "c1_c2" else ("Ch2", "Ch1")
+                has_ratio = True
+            
+            # 2. Aux 标签
+            aux_labels = []
+            if data_aux_list:
+                for i in range(len(data_aux_list)):
+                    aux_labels.append(f"Ch{i+3}")
+
+            channel_info = {
+                "labels": labels,
+                "has_ratio": has_ratio,
+                "aux_labels": aux_labels
+            }
 
             self.app.root.after(0, lambda: self.plot_window_controller.update_data(
-                times, results, unit, is_log, do_norm, labels
+                times, results, unit, is_log, do_norm, channel_info
             ))
             
         except Exception as e:
             print(f"Calc Error: {e}")
+            import traceback
+            traceback.print_exc()
         finally:
             self.is_calculating = False
-
 
     def _process_background_roi(self, roi_data):
         """Calculate mean intensity in the ROI across time and update App."""
