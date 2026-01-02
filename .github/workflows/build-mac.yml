@@ -25,28 +25,28 @@ jobs:
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           fi
-          # 确保所有依赖都装上
+          # 强制安装所有可能缺失的库
           pip install opencv-python numpy matplotlib scipy tifffile requests pyinstaller
 
-      # --- 关键步骤：修改代码，让错误暴露出来 ---
-      - name: Patch Code (Expose Errors)
+      - name: Precision Patching (Smart Fix)
         run: |
-          echo "Patching source code in src/ria_gui..."
+          cd src/ria_gui
           
-          # 1. 修复 Windows 专用代码 (避免 ctypes 报错)
-          sed -i '' 's/ctypes.windll/# ctypes.windll/g' src/ria_gui/main.py
-          sed -i '' 's/self.root.iconbitmap/pass # self.root.iconbitmap/g' src/ria_gui/gui.py
+          # 1. 修复 Windows 专用代码 (ctypes & icon)
+          sed -i '' 's/ctypes.windll/# ctypes.windll/g' main.py
+          sed -i '' 's/self.root.iconbitmap/pass # self.root.iconbitmap/g' gui.py
           
-          # 2. 【核心】破坏 gui.py 的错误隐藏机制
-          # 将 "except ImportError:" 替换为 "except ImportError: raise"
-          # 这样如果导入 gui_components 失败，会直接报 ImportError，而不是后面的 NameError
-          sed -i '' 's/except ImportError:/except ImportError: raise/g' src/ria_gui/gui.py
+          # 2. 修改 main.py: 让它不再吞掉 'import gui' 的错误
+          # 将 'except ImportError:' 替换为 'except ImportError: raise'
+          # 这样如果 gui 模块加载失败，程序会直接报错显示原因，而不是去试 src
+          sed -i '' 's/except ImportError:/except ImportError: raise/g' main.py
           
-          # 3. 同时也破坏 gui_components.py 的错误隐藏机制
-          # 因为 gui_components 里面也 try import plot_window，如果它失败了，也会导致链式反应
-          sed -i '' 's/except ImportError:/except ImportError: raise/g' src/ria_gui/gui_components.py
-
-          echo "Code patching complete. Now if imports fail, we will see exactly WHICH file is missing."
+          # 3. 修改 gui.py: 
+          # 关键点：我们只替换打印错误的那一行，不破坏它尝试相对/绝对导入的逻辑
+          # 查找 print(f"Import Error...) 并替换为 raise
+          sed -i '' 's/print(f"Import Error.*)/raise/g' gui.py
+          
+          echo "Patching complete. Import errors will now be visible."
 
       - name: Sync Version
         run: |
@@ -55,13 +55,12 @@ jobs:
             sed -i '' "s/__version__\s*=\s*[\"'].*[\"']/__version__ = \"$TAG_NAME\"/" src/ria_gui/_version.py
           fi
 
-      # --- 打包步骤 ---
       - name: Build with PyInstaller
         run: |
           APP_NAME="RIA_Liya_${{ github.ref_name }}_macOS"
           
-          # 使用 --paths 明确告诉 PyInstaller 源码在哪里
-          # 并强制隐藏导入所有子模块
+          # 使用 --paths src/ria_gui 确保能找到同级模块
+          # 添加 --hidden-import 强制打包所有子模块
           
           pyinstaller --noconsole --windowed --name "$APP_NAME" \
             --argv-emulation \
@@ -69,12 +68,13 @@ jobs:
             --add-data "src/ria_gui/assets:assets" \
             --icon "src/ria_gui/assets/app.icns" \
             --paths "src/ria_gui" \
+            --hidden-import "gui" \
             --hidden-import "gui_components" \
-            --hidden-import "plot_window" \
             --hidden-import "processing" \
             --hidden-import "io_utils" \
             --hidden-import "components" \
             --hidden-import "constants" \
+            --hidden-import "plot_window" \
             --hidden-import "_version" \
             --exclude-module matplotlib.tests \
             --exclude-module numpy.random._examples \
