@@ -10,77 +10,58 @@ jobs:
     runs-on: macos-latest
     
     steps:
-      # --- 1. 拉取代码 ---
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- 2. 设置 Python 环境 ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.9'
           cache: 'pip'
 
-      # --- 3. 安装依赖 ---
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          # 安装项目依赖
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           fi
-          # 强制补全核心依赖 (防止 requirements.txt 缺失)
-          pip install opencv-python numpy matplotlib scipy tifffile requests
-          # 安装打包工具
-          pip install pyinstaller
+          # 确保所有依赖都装上
+          pip install opencv-python numpy matplotlib scipy tifffile requests pyinstaller
 
-      # --- 4. 临时修复代码 (Windows 专用代码处理) ---
-      - name: Patch Code for macOS
+      # --- 关键步骤：修改代码，让错误暴露出来 ---
+      - name: Patch Code (Expose Errors)
         run: |
-          echo "Patching Windows-specific code in src/ria_gui..."
+          echo "Patching source code in src/ria_gui..."
           
-          # 1. 修复 main.py: 注释掉 ctypes
-          if [ -f "src/ria_gui/main.py" ]; then
-            sed -i '' 's/ctypes.windll/# ctypes.windll/g' src/ria_gui/main.py
-            echo "✔ Patched main.py"
-          else
-            echo "❌ Error: src/ria_gui/main.py not found"
-            exit 1
-          fi
+          # 1. 修复 Windows 专用代码 (避免 ctypes 报错)
+          sed -i '' 's/ctypes.windll/# ctypes.windll/g' src/ria_gui/main.py
+          sed -i '' 's/self.root.iconbitmap/pass # self.root.iconbitmap/g' src/ria_gui/gui.py
           
-          # 2. 修复 gui.py: 注释掉 iconbitmap
-          if [ -f "src/ria_gui/gui.py" ]; then
-            sed -i '' 's/self.root.iconbitmap/pass # self.root.iconbitmap/g' src/ria_gui/gui.py
-            
-            # 【重要】强制破坏 try...except 结构
-            # 你的代码里 main.py 引用 gui 失败时会尝试引用 src.ria_gui.gui
-            # 我们要确保它直接引用 gui 成功，或者直接报错，不要去引用 src (因为打包后 src 文件夹不存在)
-            # 这里不需要改代码，只要下面的打包参数 --paths 设置对即可
-            
-            echo "✔ Patched gui.py"
-          else
-            echo "❌ Error: src/ria_gui/gui.py not found"
-            exit 1
-          fi
+          # 2. 【核心】破坏 gui.py 的错误隐藏机制
+          # 将 "except ImportError:" 替换为 "except ImportError: raise"
+          # 这样如果导入 gui_components 失败，会直接报 ImportError，而不是后面的 NameError
+          sed -i '' 's/except ImportError:/except ImportError: raise/g' src/ria_gui/gui.py
+          
+          # 3. 同时也破坏 gui_components.py 的错误隐藏机制
+          # 因为 gui_components 里面也 try import plot_window，如果它失败了，也会导致链式反应
+          sed -i '' 's/except ImportError:/except ImportError: raise/g' src/ria_gui/gui_components.py
 
-      # --- 5. 同步版本号 ---
+          echo "Code patching complete. Now if imports fail, we will see exactly WHICH file is missing."
+
       - name: Sync Version
         run: |
           TAG_NAME=${{ github.ref_name }}
-          echo "Building version: $TAG_NAME"
-          
           if [ -f "src/ria_gui/_version.py" ]; then
             sed -i '' "s/__version__\s*=\s*[\"'].*[\"']/__version__ = \"$TAG_NAME\"/" src/ria_gui/_version.py
           fi
 
-      # --- 6. 执行打包 (PyInstaller) ---
+      # --- 打包步骤 ---
       - name: Build with PyInstaller
         run: |
           APP_NAME="RIA_Liya_${{ github.ref_name }}_macOS"
           
-          # 【核心配置】
-          # --paths src/ria_gui : 将该目录加入 Python 搜索路径，这样 import gui 就能找到 src/ria_gui/gui.py
-          # hidden-import : 显式填入 src/ria_gui 下的模块名 (不带路径前缀)
+          # 使用 --paths 明确告诉 PyInstaller 源码在哪里
+          # 并强制隐藏导入所有子模块
           
           pyinstaller --noconsole --windowed --name "$APP_NAME" \
             --argv-emulation \
@@ -88,37 +69,26 @@ jobs:
             --add-data "src/ria_gui/assets:assets" \
             --icon "src/ria_gui/assets/app.icns" \
             --paths "src/ria_gui" \
-            --hidden-import "gui" \
             --hidden-import "gui_components" \
+            --hidden-import "plot_window" \
             --hidden-import "processing" \
             --hidden-import "io_utils" \
             --hidden-import "components" \
             --hidden-import "constants" \
-            --hidden-import "plot_window" \
             --hidden-import "_version" \
             --exclude-module matplotlib.tests \
             --exclude-module numpy.random._examples \
             --exclude-module tkinter.test \
             --exclude-module unittest \
-            --exclude-module pydoc \
             --exclude-module lib2to3 \
             src/ria_gui/main.py
 
-      # --- 7. 压缩打包产物 ---
       - name: Package Application
         run: |
           cd dist
           APP_NAME="RIA_Liya_${{ github.ref_name }}_macOS"
-          
-          if [ -d "$APP_NAME.app" ]; then
-            echo "Packaging $APP_NAME.app ..."
-            zip -r "$APP_NAME.zip" "$APP_NAME.app"
-          else
-            echo "Error: App build failed, directory not found."
-            exit 1
-          fi
+          zip -r "$APP_NAME.zip" "$APP_NAME.app"
 
-      # --- 8. 上传到 Release ---
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
@@ -127,7 +97,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- 9. 上传测试产物 ---
       - name: Upload Artifact for Testing
         uses: actions/upload-artifact@v4
         with:
