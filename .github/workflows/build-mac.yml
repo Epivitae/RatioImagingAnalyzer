@@ -25,62 +25,59 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          
-          # 强制安装完整版 OpenCV
+          # 强制安装完整版依赖
           pip install opencv-python numpy matplotlib scipy tifffile requests
-          
-          # 安装打包工具
           pip install pyinstaller
 
-      # --- 4. 临时修复代码 (路径修正版) ---
-      - name: Patch Code for macOS
+      # --- 4. 临时修复代码 & 准备环境 ---
+      - name: Patch Code and Prepare
         run: |
+          # 【关键步骤】进入代码目录
+          cd src/ria_gui
+          echo "Current directory: $(pwd)"
+          
           echo "Patching Windows-specific code..."
+          # 修复 main.py (Windows AppID)
+          sed -i '' 's/ctypes.windll/# ctypes.windll/g' main.py
           
-          # [关键修改] 这里的路径改为 src/ria_gui/main.py
-          if [ -f "src/ria_gui/main.py" ]; then
-            sed -i '' 's/ctypes.windll/# ctypes.windll/g' src/ria_gui/main.py
-            echo "Patched main.py"
-          else
-            echo "Error: src/ria_gui/main.py not found!"
-            ls -R src # 打印目录结构以便调试
-            exit 1
-          fi
+          # 修复 gui.py (Windows Icon)
+          sed -i '' 's/self.root.iconbitmap/pass # self.root.iconbitmap/g' gui.py
           
-          # [关键修改] 这里的路径改为 src/ria_gui/gui.py
-          if [ -f "src/ria_gui/gui.py" ]; then
-            sed -i '' 's/self.root.iconbitmap/pass # self.root.iconbitmap/g' src/ria_gui/gui.py
-            echo "Patched gui.py"
-          else
-             echo "Error: src/ria_gui/gui.py not found!"
-             exit 1
-          fi
+          # 修复 gui.py (强制暴露导入错误)
+          # 我们把吞掉错误的 try...except 破坏掉，让它直接 crash 显示真实错误
+          # 将 'except ImportError:' 替换为 'except ImportError: raise #' 
+          # 这样如果 gui_components 导入失败，会直接抛出 ImportError 而不是后面的 NameError
+          sed -i '' 's/except ImportError:/except ImportError: raise #/g' gui.py
           
           echo "Patching complete."
 
       # --- 5. 同步版本号 ---
       - name: Sync Version
         run: |
+          cd src/ria_gui
           TAG_NAME=${{ github.ref_name }}
           echo "Building version: $TAG_NAME"
           
-          if [ -f "src/ria_gui/_version.py" ]; then
-            sed -i '' "s/__version__\s*=\s*[\"'].*[\"']/__version__ = \"$TAG_NAME\"/" src/ria_gui/_version.py
+          if [ -f "_version.py" ]; then
+            sed -i '' "s/__version__\s*=\s*[\"'].*[\"']/__version__ = \"$TAG_NAME\"/" _version.py
           fi
 
-      # --- 6. 执行打包 (PyInstaller) ---
+      # --- 6. 执行打包 (在子目录中运行) ---
       - name: Build with PyInstaller
         run: |
+          # 【关键步骤】进入代码目录
+          cd src/ria_gui
+          
           APP_NAME="RIA_Liya_${{ github.ref_name }}_macOS"
           
-          # [关键修改] paths 指向 src/ria_gui，脚本指向 src/ria_gui/main.py
+          # 因为已经进入了目录，所有路径都不需要写 src/ria_gui 了
+          # 这样 PyInstaller 会把当前目录下的所有 .py 文件视为同级，极大地减少导入错误
           
           pyinstaller --noconsole --windowed --name "$APP_NAME" \
             --argv-emulation \
             --target-arch arm64 \
-            --add-data "src/ria_gui/assets:assets" \
-            --icon "src/ria_gui/assets/app.icns" \
-            --paths "src/ria_gui" \
+            --add-data "assets:assets" \
+            --icon "assets/app.icns" \
             --hidden-import "gui_components" \
             --hidden-import "processing" \
             --hidden-import "io_utils" \
@@ -94,11 +91,17 @@ jobs:
             --exclude-module unittest \
             --exclude-module pydoc \
             --exclude-module lib2to3 \
-            src/ria_gui/main.py
+            main.py
+            
+          # 【关键步骤】把打包好的 App 移回项目根目录的 dist 文件夹
+          # 这样后续的上传步骤才能找到它
+          mkdir -p ../../dist
+          mv "dist/$APP_NAME.app" ../../dist/
 
       # --- 7. 压缩打包产物 ---
       - name: Package Application
         run: |
+          # 回到根目录的 dist
           cd dist
           APP_NAME="RIA_Liya_${{ github.ref_name }}_macOS"
           
@@ -107,6 +110,7 @@ jobs:
             zip -r "$APP_NAME.zip" "$APP_NAME.app"
           else
             echo "Error: App build failed, directory not found."
+            ls -R
             exit 1
           fi
 
