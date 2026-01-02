@@ -67,7 +67,7 @@ class RatioAnalyzerApp:
         self.VERSION = __version__
         self.current_lang = "en"
         self.ui_elements = {}
-        self.root.geometry("1080x990")
+        self.root.geometry("1110x990")
         self.root.configure(bg="#F0F2F5") 
         self.root.minsize(1000, 900)
         
