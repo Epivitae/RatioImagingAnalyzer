@@ -102,6 +102,10 @@ class RatioAnalyzerApp:
         self.c1_path = None; self.c2_path = None
         self.dual_path = None
         
+        # Mitichannel view
+        self.view_mode = "ratio" # ratio, ch1, ch2, aux_0...
+        self.channel_buttons = [] 
+
         self.is_playing = False; self.fps = 10 
         self.is_interleaved_var = tk.BooleanVar(value=False)
 
@@ -283,6 +287,10 @@ class RatioAnalyzerApp:
         self.frame_right = ttk.Frame(self.main_pane, style="Card.TFrame", padding=10)
         self.main_pane.add(self.frame_right, weight=1)
 
+        # [新增] 通道选择栏 (Channel Bar) - 放在 Plot Container 上方
+        self.frame_channels = ttk.Frame(self.frame_right, style="White.TFrame")
+        self.frame_channels.pack(side="top", fill="x", pady=(0, 5))
+
         self.plot_container = ttk.Frame(self.frame_right, style="White.TFrame")
         self.plot_container.pack(side="top", fill="both", expand=True)
         
@@ -343,18 +351,16 @@ class RatioAnalyzerApp:
         self.btn_dual.pack(side="left")
         self.ui_elements["btn_dual"] = self.btn_dual
         
-        # [新增] 通道数指示器 (Badge) - 放在最右侧
-        # 默认隐藏或显示空，颜色设为蓝色
-        self.lbl_ch_indicator = ttk.Label(f_row, text="", style="White.TLabel")
-        self.lbl_ch_indicator.pack(side="right", padx=(0, 5))
-        
         # 路径显示 (占据剩余空间)
         self.lbl_dual_path = ttk.Label(f_row, text="...", foreground="gray", anchor="w", style="White.TLabel")
         self.lbl_dual_path.pack(side="left", padx=5, fill="x", expand=True)
-        
-        self.lbl_ch_indicator = ttk.Label(f_row, text="", style="BadgeBlue.TLabel")
-        self.lbl_ch_indicator.pack(side="right", padx=(0, 5))
 
+        # [修正] 通道数指示器 (Badge) - 放在最右侧
+        # 关键点：初始化时使用 "White.TLabel" 让它与背景融合（隐身）
+        self.lbl_ch_indicator = ttk.Label(f_row, text="", style="White.TLabel")
+        self.lbl_ch_indicator.pack(side="right", padx=(0, 5))
+        
+        # 注意：你之前的代码在这里又重复定义了一次 BadgeBlue，导致出现蓝色方块。已删除。
 
         # Mixed Stacks & Channel Count Row
         f_inter = ttk.Frame(self.tab_dual, style="White.TFrame")
@@ -379,7 +385,6 @@ class RatioAnalyzerApp:
 
         self.btn_clear_data = ttk.Button(f_actions, text="🗑", width=8, command=self.clear_all_data, style="Gray.TButton")
         self.btn_clear_data.pack(side="right", fill="y")
-    
     
     def setup_preprocess_group(self):
         self.grp_pre = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
@@ -530,6 +535,105 @@ class RatioAnalyzerApp:
         ttk.Label(inner_box, text="RIA 莉丫", font=("Microsoft YaHei UI", 12, "bold"), foreground="#0056b3", style="White.TLabel").pack(side="top")
         current_year = datetime.datetime.now().year
         ttk.Label(inner_box, text=f"© {current_year} Dr. Kui Wang | www.cns.ac.cn", font=("Segoe UI", 8), foreground="gray", style="White.TLabel").pack(side="top", pady=(2, 0))
+
+
+    def rebuild_channel_bar(self):
+        """
+        根据当前加载的数据，动态生成通道切换按钮。
+        """
+        # 1. [修正] 清除容器内的所有组件 (包括按钮和分割线)
+        for widget in self.frame_channels.winfo_children():
+            widget.destroy()
+        
+        # 重置按钮列表
+        self.channel_buttons = []
+        
+        # 如果没数据，什么都不做
+        if self.data1 is None: return
+
+        # 定义一个通用样式函数
+        def create_btn(text, mode, parent):
+            btn = ttk.Button(parent, text=text, style="Toggle.TButton", 
+                             command=lambda m=mode: self.set_view_mode(m))
+            btn.pack(side="left", padx=2)
+            self.channel_buttons.append(btn)
+            return btn
+
+        # 2. 生成 Ratio 按钮
+        if self.data2 is not None:
+            # 双通道模式
+            create_btn("📊 Ratio", "ratio", self.frame_channels)
+        else:
+            # 单通道模式
+            create_btn("🔥 Intensity", "ratio", self.frame_channels)
+
+        # 插入分割线 (现在它会被上面的循环正确清除了)
+        ttk.Separator(self.frame_channels, orient="vertical").pack(side="left", fill="y", padx=5)
+
+        # 3. 生成 Ch1 按钮
+        create_btn("Ch1", "ch1", self.frame_channels)
+
+        # 4. 生成 Ch2 按钮 (如果存在)
+        if self.data2 is not None:
+            create_btn("Ch2", "ch2", self.frame_channels)
+
+        # 5. 生成 Aux 按钮
+        if hasattr(self, 'data_aux'):
+            for i, _ in enumerate(self.data_aux):
+                create_btn(f"Ch{i+3}", f"aux_{i}", self.frame_channels)
+
+        # 6. 刷新按钮状态高亮
+        self.update_channel_buttons_state()
+
+
+    def set_view_mode(self, mode):
+        # 1. [新增] 切换视图时，如果锁定了范围，强制解锁
+        # 防止从 Ratio (0-2.0) 切到 Intensity (0-65535) 时画面因范围不匹配而全黑/全白
+        if self.lock_var.get():
+            self.lock_var.set(False)
+            # 手动更新 UI 状态 (禁用输入框)，但不调用 toggle_scale_mode() 以免触发多余的重绘
+            self.entry_vmin.config(state="disabled")
+            self.entry_vmax.config(state="disabled")
+
+        self.view_mode = mode
+        self.update_channel_buttons_state()
+        
+        # 2. 自动切换 Colormap
+        # 如果切回 Ratio/Int，使用用户选定的 cmap (如 coolwarm)
+        # 如果切到原始通道，使用 gray 或 viridis 以便看清细节
+        if mode == "ratio":
+            self.update_cmap() # 恢复原来的 cmap
+        else:
+            # 临时切换到 gray 观看原始通道
+            self.plot_mgr.update_cmap("gray", "Black") 
+            
+        self.update_plot()
+
+    def update_channel_buttons_state(self):
+        """高亮当前选中的视图模式按钮"""
+        # 这一步比较麻烦，因为按钮存储在 list 里，我们需要根据 text 或 command 判断
+        # 简单起见，我们重新遍历
+        # 这里的逻辑稍微 Hack 一下：我们无法直接获取 command 中的 lambda 参数
+        # 所以我们依赖顺序：Ratio -> Ch1 -> Ch2 -> Aux...
+        
+        # 更好的方法是：在 create_btn 时把 mode 绑定到 widget 属性上
+        targets = []
+        if self.data2 is not None: targets.append("ratio")
+        else: targets.append("ratio") # Intensity
+        
+        targets.append("ch1")
+        if self.data2 is not None: targets.append("ch2")
+        if hasattr(self, 'data_aux'):
+            for i in range(len(self.data_aux)): targets.append(f"aux_{i}")
+            
+        # 遍历按钮并设置状态
+        for btn, mode_name in zip(self.channel_buttons, targets):
+            if mode_name == self.view_mode:
+                btn.state(['pressed', 'selected'])
+                # 给当前选中的按钮加点颜色样式? 暂时用 pressed 状态
+            else:
+                btn.state(['!pressed', '!selected'])
+
 
 
     def create_bottom_panel(self, parent):
@@ -785,6 +889,11 @@ class RatioAnalyzerApp:
             else:
                 self.btn_align.config(state="disabled")
 
+
+            self.view_mode = "ratio"
+            self.rebuild_channel_bar()
+
+
             self.recalc_background()
             self.frame_scale.configure(to=self.data1.shape[0]-1)
             self.var_frame.set(0); self.frame_scale.set(0)
@@ -836,6 +945,11 @@ class RatioAnalyzerApp:
         self.lbl_frame.config(text="0/0")
         self.pb_align.pack_forget()
 
+        # Clear all channels
+        for btn in self.channel_buttons:
+            btn.destroy()
+        self.channel_buttons = []
+
 
     def update_mode_options(self):
         txt_c1_c2 = self.t("mode_c1_c2") if "mode_c1_c2" in LANG_MAP else "Ch1 / Ch2"
@@ -879,17 +993,18 @@ class RatioAnalyzerApp:
     def set_custom_background(self, val1, val2):
         """
         回调函数：由 RoiManager 计算完成后调用。
-        功能：只更新数值和标签，不强制切换模式。
         """
         self.custom_bg1 = val1
         self.custom_bg2 = val2
         
-        self.lbl_bg_val.config(text=f"ROI Val: {val1:.1f} / {val2:.1f}")
+        # [优化] 根据模式显示不同的文本
+        if self.data2 is None:
+            self.lbl_bg_val.config(text=f"ROI Val: {val1:.1f}")
+        else:
+            self.lbl_bg_val.config(text=f"ROI Val: {val1:.1f} / {val2:.1f}")
         
-
         self.chk_custom_bg.config(state="normal")
         
-
         if self.use_custom_bg_var.get():
             self.update_plot()
 
@@ -1041,14 +1156,39 @@ class RatioAnalyzerApp:
     def get_processed_frame(self, frame_idx):
         d_num, d_den, bg_num, bg_den = self.get_active_data()
         if d_num is None: return None
+        
+        # === 逻辑分支 ===
+        
+        # 1. 原始通道模式 (Ch1, Ch2, Aux)
+        if self.view_mode == "ch1":
+            # 返回：(数据 - 背景)，并 Clip 掉负值
+            raw = d_num[frame_idx].astype(np.float32) - bg_num
+            return np.clip(raw, 0, None)
+            
+        elif self.view_mode == "ch2":
+            if d_den is None: return None
+            raw = d_den[frame_idx].astype(np.float32) - bg_den
+            return np.clip(raw, 0, None)
+            
+        elif self.view_mode.startswith("aux_"):
+            try:
+                idx = int(self.view_mode.split("_")[1])
+                if idx < len(self.data_aux):
+                    # Aux 也有背景吗？目前我们在 recalc_background 里算过 cached_bg_aux
+                    bg_val = self.cached_bg_aux[idx] if idx < len(self.cached_bg_aux) else 0
+                    raw = self.data_aux[idx][frame_idx].astype(np.float32) - bg_val
+                    return np.clip(raw, 0, None)
+            except: return None
+
+        # 2. Ratio / Main 模式 (默认)
+        # 这里维持原来的逻辑，进行比率计算、阈值过滤、平滑等
         return process_frame_ratio(
             d_num[frame_idx], 
-            d_den[frame_idx] if d_den is not None else None, # [修改] 传递 None 而不是报错
+            d_den[frame_idx] if d_den is not None else None,
             bg_num, bg_den,
             self.var_int_thresh.get(), self.var_ratio_thresh.get(),
             int(self.var_smooth.get()), False 
         )
-
 
     def toggle_scale_mode(self):
         if self.lock_var.get():
@@ -1064,25 +1204,59 @@ class RatioAnalyzerApp:
         idx = self.var_frame.get()
         img = self.get_processed_frame(idx)
         if img is None: return
+
+        # 1. 计算 View Mode 字符串 (用于标题) 和 Colorbar 标签
+        cbar_str = "Intensity Value" # 默认值
+        
+        if self.view_mode == "ratio":
+            if self.data2 is not None:
+                mode_str = "Ratio"
+                cbar_str = "Ratio Value" # 只有双通道 Ratio 模式才显示 Ratio
+            else:
+                mode_str = "Intensity"
+                cbar_str = "Intensity Value" # 单通道模式显示 Intensity
+        elif self.view_mode == "ch1": 
+            mode_str = "Ch1 (Raw-BG)"
+        elif self.view_mode == "ch2": 
+            mode_str = "Ch2 (Raw-BG)"
+        else: 
+            mode_str = self.view_mode.capitalize()
+
+        # 2. 计算 Scaling Mode (Auto / Lock) 和 vmin/vmax
         if self.lock_var.get():
-            try: vmin, vmax = float(self.entry_vmin.get()), float(self.entry_vmax.get())
-            except: vmin, vmax = 0.1, 1.0 
+            try: 
+                vmin, vmax = float(self.entry_vmin.get()), float(self.entry_vmax.get())
+            except: 
+                vmin, vmax = 0.1, 1.0 
             mode = "Lock"
+            self.entry_vmin.config(state="normal")
+            self.entry_vmax.config(state="normal")
         else:
             mode = "Auto"
             try:
-                if self.log_var.get():
-                    valid = img[img > 1e-6]
-                    if len(valid) > 0: vmin, vmax = np.nanpercentile(valid, [5, 95])
-                    else: vmin, vmax = 0.1, 1.0
-                else: vmin, vmax = np.nanpercentile(img, [5, 95])
+                valid_mask = ~np.isnan(img)
+                if self.log_var.get(): valid_mask &= (img > 1e-6)
+                valid_data = img[valid_mask]
+                if len(valid_data) > 0: vmin, vmax = np.nanpercentile(valid_data, [5, 95])
+                else: vmin, vmax = 0.1, 1.0
             except: vmin, vmax = 0, 1
+            
             self.entry_vmin.config(state="normal"); self.entry_vmax.config(state="normal")
             self.entry_vmin.delete(0, tk.END); self.entry_vmin.insert(0, f"{vmin:.2f}")
             self.entry_vmax.delete(0, tk.END); self.entry_vmax.insert(0, f"{vmax:.2f}")
             self.entry_vmin.config(state="disabled"); self.entry_vmax.config(state="disabled")
-        title = f"Frame {idx} | {mode} | {'Log' if self.log_var.get() else 'Linear'}"
-        self.plot_mgr.update_image(img, vmin, vmax, log_scale=self.log_var.get(), title=title)
+
+        # 3. 构建标题
+        log_str = 'Log' if self.log_var.get() else 'Linear'
+        title = f"{mode_str} | Frame {idx} | {mode} | {log_str}"
+
+        # 4. 更新图像 (传入 cbar_label)
+        self.plot_mgr.update_image(
+            img, vmin, vmax, 
+            log_scale=self.log_var.get(), 
+            title=title, 
+            cbar_label=cbar_str # [修改] 传入计算好的标签
+        )
 
     def update_cmap(self):
         self.plot_mgr.update_cmap(self.cmap_var.get(), self.bg_color_var.get())

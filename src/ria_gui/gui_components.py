@@ -98,17 +98,32 @@ class PlotManager:
         self.cbar = self.fig.colorbar(self.im_object, ax=self.ax, shrink=0.6, pad=0.02, label='Ratio Value')
         self.canvas.draw()
 
-    def update_image(self, img_data, vmin, vmax, log_scale=False, title=""):
+    def update_image(self, img_data, vmin, vmax, log_scale=False, title="", cbar_label=None):
+        """
+        更新图像数据、标题和 Colorbar 标签。
+        [修改] 增加了 cbar_label 参数。
+        """
         if self.im_object is None: return
+        
+        # 1. 设置归一化
         if log_scale:
             safe_vmin = max(vmin, 0.1)
             safe_vmax = max(vmax, safe_vmin * 1.1)
             norm = LogNorm(vmin=safe_vmin, vmax=safe_vmax)
         else:
             norm = Normalize(vmin=vmin, vmax=vmax)
+            
         self.im_object.set_data(img_data)
         self.im_object.set_norm(norm)
-        if self.cbar: self.cbar.update_normal(self.im_object)
+        
+        # 2. 更新 Colorbar
+        if self.cbar: 
+            self.cbar.update_normal(self.im_object)
+            # [新增] 如果传入了标签，动态更新它
+            if cbar_label:
+                self.cbar.set_label(cbar_label)
+                
+        # 3. 更新标题并重绘
         self.ax.set_title(title)
         self.canvas.draw_idle()
 
@@ -593,16 +608,19 @@ class RoiManager:
         if self.app.data1 is None: return
 
         # Get Raw Data (Use Time-Average for stability)
-        # Using the raw data1/data2 from app, not the processed ones
         try:
-            # 1. Calculate Time-Average Image (Collapse time dimension)
-            # This avoids noise from a single frame affecting the whole stack
+            # 1. Calculate Time-Average Image for Ch1
             mean_img1 = np.mean(self.app.data1, axis=0) 
-            mean_img2 = np.mean(self.app.data2, axis=0)
-            
-            # 2. Extract mean value within the mask
             bg_val1 = np.mean(mean_img1[mask])
-            bg_val2 = np.mean(mean_img2[mask])
+            
+            # [修改] 增加对 Ch2 是否存在的判断
+            if self.app.data2 is not None:
+                # 双通道模式：正常计算
+                mean_img2 = np.mean(self.app.data2, axis=0)
+                bg_val2 = np.mean(mean_img2[mask])
+            else:
+                # 单通道模式：Ch2 背景设为 0
+                bg_val2 = 0.0
             
             # 3. Send back to App
             self.app.set_custom_background(float(bg_val1), float(bg_val2))
