@@ -1,92 +1,105 @@
 <div align="center">
-  <img src="[https://raw.githubusercontent.com/Epivitae/RatioImagingAnalyzer/main/src/ria_gui/assets/app_ico.png](https://raw.githubusercontent.com/Epivitae/RatioImagingAnalyzer/main/src/ria_gui/assets/app_ico.png)" width="120" alt="Logo">
+  <img src="https://raw.githubusercontent.com/Epivitae/RatioImagingAnalyzer/main/src/ria_gui/assets/app_ico.png" width="120" alt="Logo">
 
   <h1>Ratio Imaging Analyzer (RIA / 莉丫)</h1>
 
   <p>
-    <a href="[https://pypi.org/project/ria-gui/](https://pypi.org/project/ria-gui/)"><img src="[https://img.shields.io/pypi/v/ria-gui?color=blue](https://img.shields.io/pypi/v/ria-gui?color=blue)" alt="PyPI"></a>
-    <a href="[https://joss.theoj.org/papers/@epivitae](https://joss.theoj.org/papers/@epivitae)"><img src="[https://joss.theoj.org/papers/please-replace-with-your-id/status.svg](https://joss.theoj.org/papers/please-replace-with-your-id/status.svg)" alt="Status"></a>
-    <a href="[https://doi.org/10.5281/zenodo.18091693](https://doi.org/10.5281/zenodo.18091693)"><img src="[https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18091693-0099CC](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18091693-0099CC)" alt="DOI"></a>
-    <a href="[https://www.python.org/downloads/](https://www.python.org/downloads/)"><img src="[https://img.shields.io/badge/python-3.8%2B-3776AB?logo=python&logoColor=white](https://img.shields.io/badge/python-3.8%2B-3776AB?logo=python&logoColor=white)" alt="Python"></a>
-    <a href="LICENSE"><img src="[https://img.shields.io/github/license/Epivitae/RatioImagingAnalyzer?color=yellow](https://img.shields.io/github/license/Epivitae/RatioImagingAnalyzer?color=yellow)" alt="License"></a>
+    <a href="https://pypi.org/project/ria-gui/"><img src="https://img.shields.io/pypi/v/ria-gui?color=blue" alt="PyPI"></a>
+    <a href="https://joss.theoj.org/papers/@epivitae"><img src="https://joss.theoj.org/papers/please-replace-with-your-id/status.svg" alt="Status"></a>
+    <a href="https://doi.org/10.5281/zenodo.18091693"><img src="https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18091693-0099CC" alt="DOI"></a>
+    <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.8%2B-3776AB?logo=python&logoColor=white" alt="Python"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/Epivitae/RatioImagingAnalyzer?color=yellow" alt="License"></a>
   </p>
 
   <p>
-    <a href="[https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml](https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml)"><img src="[https://img.shields.io/github/actions/workflow/status/Epivitae/RatioImagingAnalyzer/test.yml?branch=main&label=tests&color=brightgreen](https://img.shields.io/github/actions/workflow/status/Epivitae/RatioImagingAnalyzer/test.yml?branch=main&label=tests&color=brightgreen)" alt="Tests"></a>
-    <a href="[https://opensource.org/](https://opensource.org/)"><img src="[https://img.shields.io/badge/Open_Source-Yes-2ea44f?logo=open-source-initiative&logoColor=white](https://img.shields.io/badge/Open_Source-Yes-2ea44f?logo=open-source-initiative&logoColor=white)" alt="Open Source"></a>
-    <img src="[https://img.shields.io/github/repo-size/Epivitae/RatioImagingAnalyzer?color=ff69b4](https://img.shields.io/github/repo-size/Epivitae/RatioImagingAnalyzer?color=ff69b4)" alt="Size">
-    <img src="[https://img.shields.io/endpoint?color=blueviolet&url=https://gist.githubusercontent.com/Epivitae/65b61a32eaccf5de9624892da2ddd0d8/raw/gistfile1.txt](https://img.shields.io/endpoint?color=blueviolet&url=https://gist.githubusercontent.com/Epivitae/65b61a32eaccf5de9624892da2ddd0d8/raw/gistfile1.txt)" alt="LOC">
-    <img src="[https://visitor-badge.laobi.icu/badge?page_id=Epivitae.RatioImagingAnalyzer](https://visitor-badge.laobi.icu/badge?page_id=Epivitae.RatioImagingAnalyzer)" alt="Visitors">
+    <a href="https://github.com/Epivitae/RatioImagingAnalyzer/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/Epivitae/RatioImagingAnalyzer/test.yml?branch=main&label=tests&color=brightgreen" alt="Tests"></a>
+    <a href="https://opensource.org/"><img src="https://img.shields.io/badge/Open_Source-Yes-2ea44f?logo=open-source-initiative&logoColor=white" alt="Open Source"></a>
+    <img src="https://img.shields.io/github/repo-size/Epivitae/RatioImagingAnalyzer?color=ff69b4" alt="Size">
+    <img src="https://img.shields.io/endpoint?color=blueviolet&url=https://gist.githubusercontent.com/Epivitae/65b61a32eaccf5de9624892da2ddd0d8/raw/gistfile1.txt" alt="LOC">
+    <img src="https://visitor-badge.laobi.icu/badge?page_id=Epivitae.RatioImagingAnalyzer" alt="Visitors">
   </p>
 </div>
 
 ---
 
+
 **Meet RIA (or as we affectionately call her, "Li Ya / 莉丫").**
 
-RIA is an open-source tool designed to democratize fluorescence imaging analysis. **Whether you are doing Ratiometric Imaging (FRET, pH, Ca²⁺) or Single-Channel Intensity Analysis (GCaMP, Fluo-4), RIA has you covered.**
+RIA is an open-source tool built to solve a simple but annoying problem: **Ratiometric analysis shouldn't be stuck on the microscope computer.**
 
-Originally built to break the reliance on expensive microscope workstations (like MetaMorph or NIS-Elements), RIA allows researchers to perform rigorous, quantitative analysis on their own laptops—no coding required.
+Ratiometric imaging (like FRET or sensors for Tryptophan/pH/Ca²⁺) is amazing for normalizing data, but analyzing it usually requires expensive commercial software (like MetaMorph or NIS-Elements) that is locked to a specific workstation with a dongle.
+
+We built RIA so you can take your TIFF stacks, go to a coffee shop (or just your desk), and run rigorous analysis on your own laptop—no coding required.
 
 <p align="center">
-  <img src="[https://raw.githubusercontent.com/Epivitae/RatioImagingAnalyzer/main/src/ria_gui/assets/figure/analysis.gif](https://raw.githubusercontent.com/Epivitae/RatioImagingAnalyzer/main/src/ria_gui/assets/figure/analysis.gif)" width="600" alt="RIA Interface showing trace analysis">
+  <img src="https://raw.githubusercontent.com/Epivitae/RatioImagingAnalyzer/main/src/ria_gui/assets/figure/analysis.gif" width="600" alt="RIA Interface showing trace analysis">
 </p>
+
+
+[Image of fluorescence ratiometric imaging process diagram]
+
 
 ## 💡 Why use RIA?
 
-* **Universal Analysis (v1.8+)**: Not just for ratios anymore! RIA now fully supports **Single-Channel** time-lapse data. It automatically detects your file type and adapts the workflow.
-* **Project Management**: Save your entire analysis session (ROIs, thresholds, background settings) into a lightweight `.ria` file. Open it later to resume exactly where you left off.
-* **Math Done Right**: Calculating ratios isn't just `A / B`. We use **normalized convolution algorithms** to handle `NaN` correctly, preventing edge artifacts that plague simple script-based analysis.
-* **Analysis Unchained**: A standalone executable that runs on standard PCs. Stop queuing for the lab workstation.
-* **Trust Your Data**: You get the visual stacks, but you also get the **raw float32 data** and time-series CSVs. Compatible with Prism, Origin, and Excel.
+* **Analysis Unchained**: Stop queuing for the lab workstation. RIA is a standalone executable that runs on standard PCs.
+* **Math Done Right**: Calculating ratios isn't just `A / B`. Biological images have edges and noise. We implemented a **normalized convolution algorithm** that handles `NaN` (Not a Number) values correctly. This means your data doesn't get eroded or corrupted at cell boundaries—a common issue in simple script-based analysis.
+* **Zero Coding Needed**: We know not everyone loves Python. RIA has a full GUI for background subtraction, thresholding, and dragging-and-dropping ROIs.
+* **Trust Your Data**: We don't hide the numbers. You get the visual stacks, but you also get the **raw float32 ratio data** and time-series CSVs. You can take these straight to Prism, Origin, or Excel.
 
-## 📁 Project Structure (MVC Architecture)
-
-RIA follows a clean Model-View-Controller (MVC) pattern for stability and extensibility.
+## 📁 Project Structure
 
 ```text
 RatioImagingAnalyzer/
-├── data/               # Sample TIFFs
-├── src/ria_gui         # Source Code
-│   ├── main.py         # Entry point
-│   ├── gui.py          # View: UI Layout & Interaction
-│   ├── model.py        # Model: Data State & Business Logic (New in v1.8)
-│   ├── processing.py   # Core Algorithms (Math/CV2)
-│   └── components.py   # Custom Widgets
-├── tests/              # Automated E2E Tests
+├── data/               # Sample TIFFs so you can try it out immediately
+├── paper/              # JOSS submission files
+├── src/ria_gui         # The actual code
+│   ├── main.py         # Start here
+│   ├── gui.py          # The frontend logic
+│   ├── processing.py   # The math/algorithm heavy lifting
+│   └── components.py   # UI Widgets
+├── tests/              # Automated tests to keep bugs away
 └── requirements.txt    # Dependencies
 ```
 
 ## 🚀 Installation
 
-### Option 1: Install via PyPI (Recommended)
+### Option 1: Install via PyPI (Recommended for Pythoners)
+
+RIA is available on the Python Package Index. Open your terminal and run:
 
 ```bash
 pip install ria-gui
 ```
-Run:
+Once installed, simply type the following command to launch the software:
 ```bash
 ria
 ```
 
-### Option 2: Running from Source (For Developers)
+
+### Option 2: Running from Source (Recommended for Developers/Reviewers)
 
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/Epivitae/RatioImagingAnalyzer.git
    cd RatioImagingAnalyzer
    ```
+
 2. **Install dependencies:**
+   It is recommended to use a virtual environment.
+
    ```bash
    pip install -r requirements.txt
    ```
 3. **Run the application:**
+   The source code is located in the `src` directory:
+
    ```bash
    python src/ria_gui/main.py
    ```
 
-### Option 3: Standalone Executable (Windows)
-Download the latest `.exe` from [Releases](https://github.com/Epivitae/RatioImagingAnalyzer/releases). No Python required.
+### Option 3: Standalone Executable (For End Users)
+
+Check the [Releases](https://github.com/Epivitae/RatioImagingAnalyzer/releases) page to download the latest compiled `.exe` file for Windows. No Python installation is required.
 
 ## 📖 Usage Workflow
 
