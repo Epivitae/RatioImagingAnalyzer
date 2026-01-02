@@ -24,11 +24,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        # 1. 安装 Python 依赖
         pip install -r requirements.txt
         pip install pyinstaller
-        
-        # 2. 通过 Homebrew 安装 create-dmg 工具 (关键修改)
         brew install create-dmg
 
     - name: Extract Version
@@ -40,10 +37,23 @@ jobs:
 
     - name: Build with PyInstaller
       run: |
+        # 核心修改：
+        # 1. 添加 --paths "src/ria_gui" 让 PyInstaller 知道去哪找模块
+        # 2. 添加所有自定义模块到 --hidden-import
+        
         pyinstaller --noconfirm --onedir --windowed --clean \
           --name "RIA_${{ env.APP_VERSION }}" \
           --icon "src/ria_gui/assets/app.icns" \
           --add-data "src/ria_gui/assets:assets" \
+          --paths "src/ria_gui" \
+          --hidden-import "gui" \
+          --hidden-import "processing" \
+          --hidden-import "constants" \
+          --hidden-import "_version" \
+          --hidden-import "components" \
+          --hidden-import "io_utils" \
+          --hidden-import "gui_components" \
+          --hidden-import "plot_window" \
           --hidden-import "cv2" \
           --hidden-import "numpy" \
           --hidden-import "matplotlib" \
@@ -54,15 +64,12 @@ jobs:
 
     - name: Sign App (Ad-hoc)
       run: |
-        # 移除可能存在的旧签名并重新进行 Ad-hoc 签名
         codesign --remove-signature "dist/RIA_${{ env.APP_VERSION }}.app" || true
         codesign --force --deep --sign - "dist/RIA_${{ env.APP_VERSION }}.app"
 
     - name: Create DMG Installer
       run: |
         mkdir -p dist/dmg
-        
-        # 确保目标 DMG 不存在
         rm -f "dist/dmg/RIA_${{ env.APP_VERSION }}_macOS.dmg"
 
         create-dmg \
