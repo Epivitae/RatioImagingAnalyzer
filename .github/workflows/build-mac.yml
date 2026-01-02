@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-mac:
-    runs-on: macos-latest # 使用最新的 macOS 环境 (Apple Silicon)
+    runs-on: macos-latest
     
     steps:
       # --- 1. 拉取代码 ---
@@ -26,24 +26,35 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           
-          # 【修改点 1】: 强制安装完整版 OpenCV，避免 headless 版本的 GUI 冲突
+          # 强制安装完整版 OpenCV
           pip install opencv-python numpy matplotlib scipy tifffile requests
           
           # 安装打包工具
           pip install pyinstaller
 
-      # --- 4. 临时修复代码 (Action 层面修改，不影响源码) ---
+      # --- 4. 临时修复代码 (路径修正版) ---
       - name: Patch Code for macOS
         run: |
           echo "Patching Windows-specific code..."
           
-          # 1. 注释掉 main.py 中的 Windows AppID 代码 (避免 ctypes 报错)
-          # 使用 sed 将包含 ctypes.windll 的行前面加上 #
-          sed -i '' 's/ctypes.windll/# ctypes.windll/g' src/main.py
+          # [关键修改] 这里的路径改为 src/ria_gui/main.py
+          if [ -f "src/ria_gui/main.py" ]; then
+            sed -i '' 's/ctypes.windll/# ctypes.windll/g' src/ria_gui/main.py
+            echo "Patched main.py"
+          else
+            echo "Error: src/ria_gui/main.py not found!"
+            ls -R src # 打印目录结构以便调试
+            exit 1
+          fi
           
-          # 2. 注释掉 gui.py 中的 Windows 图标代码 (避免 iconbitmap 报错)
-          # 将 self.root.iconbitmap 替换为 pass # iconbitmap
-          sed -i '' 's/self.root.iconbitmap/pass # self.root.iconbitmap/g' src/gui.py
+          # [关键修改] 这里的路径改为 src/ria_gui/gui.py
+          if [ -f "src/ria_gui/gui.py" ]; then
+            sed -i '' 's/self.root.iconbitmap/pass # self.root.iconbitmap/g' src/ria_gui/gui.py
+            echo "Patched gui.py"
+          else
+             echo "Error: src/ria_gui/gui.py not found!"
+             exit 1
+          fi
           
           echo "Patching complete."
 
@@ -53,8 +64,8 @@ jobs:
           TAG_NAME=${{ github.ref_name }}
           echo "Building version: $TAG_NAME"
           
-          if [ -f "src/_version.py" ]; then
-            sed -i '' "s/__version__\s*=\s*[\"'].*[\"']/__version__ = \"$TAG_NAME\"/" src/_version.py
+          if [ -f "src/ria_gui/_version.py" ]; then
+            sed -i '' "s/__version__\s*=\s*[\"'].*[\"']/__version__ = \"$TAG_NAME\"/" src/ria_gui/_version.py
           fi
 
       # --- 6. 执行打包 (PyInstaller) ---
@@ -62,17 +73,14 @@ jobs:
         run: |
           APP_NAME="RIA_Liya_${{ github.ref_name }}_macOS"
           
-          # 【修改点 2】: 
-          # 1. --hidden-import: 强制打包 gui_components 等模块，解决 NameError
-          # 2. --target-arch arm64: 明确指定为 M1/M2 架构
-          # 3. --argv-emulation: 修复 macOS 启动参数问题
+          # [关键修改] paths 指向 src/ria_gui，脚本指向 src/ria_gui/main.py
           
           pyinstaller --noconsole --windowed --name "$APP_NAME" \
             --argv-emulation \
             --target-arch arm64 \
-            --add-data "src/assets:assets" \
-            --icon "src/assets/app.icns" \
-            --paths "src" \
+            --add-data "src/ria_gui/assets:assets" \
+            --icon "src/ria_gui/assets/app.icns" \
+            --paths "src/ria_gui" \
             --hidden-import "gui_components" \
             --hidden-import "processing" \
             --hidden-import "io_utils" \
@@ -86,7 +94,7 @@ jobs:
             --exclude-module unittest \
             --exclude-module pydoc \
             --exclude-module lib2to3 \
-            src/main.py
+            src/ria_gui/main.py
 
       # --- 7. 压缩打包产物 ---
       - name: Package Application
@@ -96,14 +104,13 @@ jobs:
           
           if [ -d "$APP_NAME.app" ]; then
             echo "Packaging $APP_NAME.app ..."
-            # 使用 -r 递归压缩
             zip -r "$APP_NAME.zip" "$APP_NAME.app"
           else
             echo "Error: App build failed, directory not found."
             exit 1
           fi
 
-      # --- 8. 上传到 Release (仅正式发布时) ---
+      # --- 8. 上传到 Release ---
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
@@ -112,7 +119,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- 9. 上传测试产物 (Artifacts) ---
+      # --- 9. 上传测试产物 ---
       - name: Upload Artifact for Testing
         uses: actions/upload-artifact@v4
         with:
