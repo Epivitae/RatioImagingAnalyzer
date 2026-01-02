@@ -1,8 +1,5 @@
 name: Build macOS App
 
-# 触发机制：
-# 1. 当发布新的 Release (published) 时自动触发
-# 2. 允许手动点击按钮触发 (workflow_dispatch)，方便开发测试
 on:
   release:
     types: [published]
@@ -24,61 +21,74 @@ jobs:
           python-version: '3.9'
           cache: 'pip'
 
-      # --- 3. 安装依赖 (关键瘦身步骤) ---
+      # --- 3. 安装依赖 ---
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           
-          # 【瘦身核心】：处理 requirements.txt
-          # 将 opencv-python 替换为无 GUI 的轻量版 opencv-python-headless
-          if [ -f requirements.txt ]; then
-            echo "Optimizing requirements.txt for macOS..."
-            # 使用 sed 替换 (macOS sed 语法需要 -i '')
-            sed -i '' 's/opencv-python/opencv-python-headless/g' requirements.txt
-            sed -i '' 's/opencv-contrib-python/opencv-python-headless/g' requirements.txt
-            
-            # 安装修改后的依赖
-            pip install -r requirements.txt
-          else
-            # 如果没有 requirements.txt，直接安装
-            pip install opencv-python-headless numpy matplotlib scipy tifffile
-          fi
-          
-          # 再次强制安装 headless 以防万一
-          pip install opencv-python-headless
+          # 【修改点 1】: 强制安装完整版 OpenCV，避免 headless 版本的 GUI 冲突
+          pip install opencv-python numpy matplotlib scipy tifffile requests
           
           # 安装打包工具
           pip install pyinstaller
 
-      # --- 4. 同步版本号 ---
+      # --- 4. 临时修复代码 (Action 层面修改，不影响源码) ---
+      - name: Patch Code for macOS
+        run: |
+          echo "Patching Windows-specific code..."
+          
+          # 1. 注释掉 main.py 中的 Windows AppID 代码 (避免 ctypes 报错)
+          # 使用 sed 将包含 ctypes.windll 的行前面加上 #
+          sed -i '' 's/ctypes.windll/# ctypes.windll/g' src/main.py
+          
+          # 2. 注释掉 gui.py 中的 Windows 图标代码 (避免 iconbitmap 报错)
+          # 将 self.root.iconbitmap 替换为 pass # iconbitmap
+          sed -i '' 's/self.root.iconbitmap/pass # self.root.iconbitmap/g' src/gui.py
+          
+          echo "Patching complete."
+
+      # --- 5. 同步版本号 ---
       - name: Sync Version
         run: |
           TAG_NAME=${{ github.ref_name }}
           echo "Building version: $TAG_NAME"
           
-          if [ -f "src/ria_gui/_version.py" ]; then
-            sed -i '' "s/__version__\s*=\s*[\"'].*[\"']/__version__ = \"$TAG_NAME\"/" src/ria_gui/_version.py
+          if [ -f "src/_version.py" ]; then
+            sed -i '' "s/__version__\s*=\s*[\"'].*[\"']/__version__ = \"$TAG_NAME\"/" src/_version.py
           fi
 
-      # --- 5. 执行打包 (PyInstaller) ---
+      # --- 6. 执行打包 (PyInstaller) ---
       - name: Build with PyInstaller
         run: |
           APP_NAME="RIA_Liya_${{ github.ref_name }}_macOS"
           
-          # --exclude-module: 排除测试库和无用模块以减小体积
+          # 【修改点 2】: 
+          # 1. --hidden-import: 强制打包 gui_components 等模块，解决 NameError
+          # 2. --target-arch arm64: 明确指定为 M1/M2 架构
+          # 3. --argv-emulation: 修复 macOS 启动参数问题
+          
           pyinstaller --noconsole --windowed --name "$APP_NAME" \
-            --add-data "src/ria_gui/assets:assets" \
-            --icon "src/ria_gui/assets/app.icns" \
-            --paths "src/ria_gui" \
+            --argv-emulation \
+            --target-arch arm64 \
+            --add-data "src/assets:assets" \
+            --icon "src/assets/app.icns" \
+            --paths "src" \
+            --hidden-import "gui_components" \
+            --hidden-import "processing" \
+            --hidden-import "io_utils" \
+            --hidden-import "components" \
+            --hidden-import "constants" \
+            --hidden-import "plot_window" \
+            --hidden-import "PIL._tkinter_finder" \
             --exclude-module matplotlib.tests \
             --exclude-module numpy.random._examples \
             --exclude-module tkinter.test \
             --exclude-module unittest \
             --exclude-module pydoc \
             --exclude-module lib2to3 \
-            src/ria_gui/main.py
+            src/main.py
 
-      # --- 6. 压缩打包产物 ---
+      # --- 7. 压缩打包产物 ---
       - name: Package Application
         run: |
           cd dist
@@ -93,7 +103,7 @@ jobs:
             exit 1
           fi
 
-      # --- 7. 上传到 Release (仅正式发布时) ---
+      # --- 8. 上传到 Release (仅正式发布时) ---
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
@@ -102,8 +112,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- 8. 上传测试产物 (Artifacts) ---
-      # 无论手动还是自动触发都执行，方便你在 VS Code 插件里直接下载测试
+      # --- 9. 上传测试产物 (Artifacts) ---
       - name: Upload Artifact for Testing
         uses: actions/upload-artifact@v4
         with:
