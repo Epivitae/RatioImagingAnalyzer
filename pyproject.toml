@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ria-gui"
-version = "1.7.10.3"
+version = "1.8.0.1"
 
 authors = [
   { name = "Kui Wang" },           # 这一项只写名字，会被映射到 Author 字段
