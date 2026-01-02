@@ -2,7 +2,6 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, Toplevel
 import tkinter.font as tkfont
 import numpy as np
-import tifffile as tiff
 import os
 import sys
 import warnings
@@ -11,31 +10,27 @@ import threading
 import requests
 import webbrowser
 import json
+from typing import List, Optional
 
 # --- Import Components ---
 try:
     from .constants import LANG_MAP
     from .components import ToggledFrame
     from .io_utils import read_and_split_multichannel, read_separate_files, read_and_split_dual_channel
-    from .gui_components import PlotManager, RoiManager 
+    from .gui_components import PlotManager, RoiManager
+    from .model import AnalysisSession
+
 except ImportError:
     try:
         from constants import LANG_MAP
         from components import ToggledFrame
         from io_utils import read_and_split_multichannel, read_separate_files, read_and_split_dual_channel
         from gui_components import PlotManager, RoiManager
+        from model import AnalysisSession
+
     except ImportError as e:
         print(f"Import Error: {e}. Ensure all modules exist.")
 
-# --- Import Processing ---
-try:
-    from .processing import calculate_background, process_frame_ratio, align_stack_ecc
-except ImportError:
-    try:
-        from processing import calculate_background, process_frame_ratio, align_stack_ecc
-    except ImportError as e:
-        print(f"CRITICAL ERROR: Failed to import processing module. Reason: {e}")
-        raise e 
 
 try:
     from ._version import __version__
@@ -81,33 +76,10 @@ class RatioAnalyzerApp:
         # --- Managers ---
         self.plot_mgr = None 
         self.roi_mgr = RoiManager(self)
+        self.session = AnalysisSession()
 
-        # Data Objects
-        self.data1 = None      # Numerator (or Ch1)
-        self.data2 = None      # Denominator (or Ch2)
-        self.data_aux = []     # List of extra channels (Ch3, Ch4...)
-        
-        self.data1_raw = None
-        self.data2_raw = None 
-
-        self.cached_bg1 = 0
-        self.cached_bg2 = 0
-        self.cached_bg_aux = [] # Backgrounds for aux channels
-        
-        # [NEW] Custom Background ROI Variables
-        self.custom_bg1 = 0.0
-        self.custom_bg2 = 0.0
         self.use_custom_bg_var = tk.BooleanVar(value=False)
-
-        # Paths
-        self.c1_path = None; self.c2_path = None
-        self.dual_path = None
-        
-        # Mitichannel view
-        self.view_mode = "ratio" # ratio, ch1, ch2, aux_0...
         self.channel_buttons = [] 
-
-        self.is_playing = False; self.fps = 10 
         self.is_interleaved_var = tk.BooleanVar(value=False)
 
         self.setup_ui_skeleton()
@@ -119,6 +91,133 @@ class RatioAnalyzerApp:
         if startup_file:
             # 延时稍微长一点(比如800ms)，或者在 auto_load_project 里做检查，确保图形引擎加载完毕
             self.root.after(800, lambda: self.auto_load_project(startup_file))
+
+    @property
+    def data1(self): return self.session.data1
+    @data1.setter
+    def data1(self, value): self.session.data1 = value
+
+    @property
+    def data2(self): return self.session.data2
+    @data2.setter
+    def data2(self, value): self.session.data2 = value
+
+    @property
+    def data_aux(self): return self.session.data_aux
+    @data_aux.setter
+    def data_aux(self, value): self.session.data_aux = value
+    
+    @property
+    def data1_raw(self): return self.session.data1_raw
+    @data1_raw.setter
+    def data1_raw(self, value): self.session.data1_raw = value
+
+    @property
+    def data2_raw(self): return self.session.data2_raw
+    @data2_raw.setter
+    def data2_raw(self, value): self.session.data2_raw = value
+
+    @property
+    def cached_bg1(self): return self.session.cached_bg1
+    @cached_bg1.setter
+    def cached_bg1(self, value): self.session.cached_bg1 = value
+    
+    @property
+    def cached_bg2(self): return self.session.cached_bg2
+    @cached_bg2.setter
+    def cached_bg2(self, value): self.session.cached_bg2 = value
+    
+    @property
+    def cached_bg_aux(self): return self.session.cached_bg_aux
+    @cached_bg_aux.setter
+    def cached_bg_aux(self, value): self.session.cached_bg_aux = value
+
+    @property
+    def c1_path(self): return self.session.c1_path
+    @c1_path.setter
+    def c1_path(self, value): self.session.c1_path = value
+
+    @property
+    def c2_path(self): return self.session.c2_path
+    @c2_path.setter
+    def c2_path(self, value): self.session.c2_path = value
+
+    @property
+    def dual_path(self): return self.session.dual_path
+    @dual_path.setter
+    def dual_path(self, value): self.session.dual_path = value
+
+    @property
+    def view_mode(self): return self.session.view_mode
+    @view_mode.setter
+    def view_mode(self, value): self.session.view_mode = value
+
+    @property
+    def is_playing(self): return self.session.is_playing
+    @is_playing.setter
+    def is_playing(self, value): self.session.is_playing = value
+
+    @property
+    def fps(self): return self.session.fps
+    @fps.setter
+    def fps(self, value): self.session.fps = value
+
+    @property
+    def custom_bg1(self): return self.session.custom_bg1
+    @custom_bg1.setter
+    def custom_bg1(self, value): self.session.custom_bg1 = value
+
+    @property
+    def custom_bg2(self): return self.session.custom_bg2
+    @custom_bg2.setter
+    def custom_bg2(self, value): self.session.custom_bg2 = value
+
+    def inspect_file_metadata(self, filepath):
+        """
+        [Refactored] 预读取文件元数据。
+        核心检测逻辑已移至 Model (self.session)，GUI 仅根据返回结果更新 UI 状态。
+        """
+        # 定义颜色常量
+        COLOR_NORMAL = "#333333"  # 正常深黑色
+        COLOR_DISABLED = "#A0A0A0" # 禁用时的灰色
+
+        # === 1. UI 初始化：先全部重置为“可用”状态 ===
+        # 防止用户先选了一个多通道文件（变灰了），又换成单通道文件，UI 却没恢复
+        self.chk_inter.config(state="normal")
+        self.sp_channels.config(state="normal")
+        
+        # 恢复 Checkbutton 的样式
+        self.chk_inter.state(['!disabled', '!selected']) 
+        
+        # 恢复 Label 颜色 (确保 setup_file_group 里已经定义了 self.lbl_ch_count)
+        if hasattr(self, 'lbl_ch_count'):
+            self.lbl_ch_count.config(foreground=COLOR_NORMAL)
+
+        # === 2. 调用 Model 获取检测结果 ===
+        # 这一步不再依赖 gui.py 里的 tifffile，而是问 session
+        is_explicit_multichannel, detected_channels = self.session.inspect_file_metadata(filepath)
+
+        # === 3. 根据结果更新 UI ===
+        if is_explicit_multichannel:
+            print(f"[Metadata] File detected as {detected_channels}-Channel. Disabling manual split.")
+            
+            # [动作 1] 强制取消勾选 "Mixed Stacks" (防止误操作)
+            self.is_interleaved_var.set(False)
+            
+            # [动作 2] 禁用控件 (逻辑禁用)
+            self.chk_inter.config(state="disabled")
+            self.sp_channels.config(state="disabled")
+            
+            # [动作 3] 视觉变灰 (给用户反馈)
+            if hasattr(self, 'lbl_ch_count'):
+                self.lbl_ch_count.config(foreground=COLOR_DISABLED)
+            
+        else:
+            print("[Metadata] File detected as 1-Channel (or unknown). User can manually split.")
+            # 保持默认启用状态即可
+
+
+
 
     def auto_load_project(self, filepath):
         """
@@ -892,93 +991,78 @@ class RatioAnalyzerApp:
             self.root.config(cursor="watch")
             self.root.update()
             
-            self.data_aux = []
-            
+            # 准备数据容器
+            raw_channels = []
             current_tab = self.nb_import.index("current")
-            channels = []
             
-            # [修正] Tab 0 现在对应 Single File (单文件)
+            # --- 分支 1: 单文件加载 ---
             if current_tab == 0:
                 if not self.dual_path: 
                     raise ValueError("No file selected.")
 
-                # 根据是否交错和指定的通道数读取
+                # 获取参数
                 n_ch = self.var_n_channels.get() if self.is_interleaved_var.get() else 2
-                channels = read_and_split_multichannel(self.dual_path, self.is_interleaved_var.get(), n_ch)
+                is_interleaved = self.is_interleaved_var.get()
                 
-                # 动态更新右上角的通道数徽章
-                count = len(channels)
+                # [核心修改] 调用 session 的方法，而不是本地方法
+                raw_channels = self.session.load_channels_from_file(
+                    self.dual_path, 
+                    is_interleaved, 
+                    n_ch
+                )
+                
+                # UI 逻辑：更新徽章
+                count = len(raw_channels)
                 if count == 1:
-                    self.lbl_ch_indicator.config(
-                        text=f" 1 Ch (Int) ", 
-                        style="BadgeGreen.TLabel" 
-                    )
+                    self.lbl_ch_indicator.config(text=f" 1 Ch (Int) ", style="BadgeGreen.TLabel")
                 else:
-                    self.lbl_ch_indicator.config(
-                        text=f" {count} Chs (Ratio) ", 
-                        style="BadgeBlue.TLabel"
-                    )
+                    self.lbl_ch_indicator.config(text=f" {count} Chs (Ratio) ", style="BadgeBlue.TLabel")
 
-            # [修正] Tab 1 现在对应 Separate Files (双文件)
+            # --- 分支 2: 双文件加载 ---
             elif current_tab == 1:
                 if not self.c1_path or not self.c2_path: 
                     raise ValueError("Files not selected.")
 
-                d1, d2 = read_separate_files(self.c1_path, self.c2_path)
-                channels = [d1, d2]
-                # 分离文件模式默认就是2通道，通常不需要更新徽章或可以置空
+                # [核心修改] 调用 session 的方法
+                raw_channels = self.session.load_separate_channels(self.c1_path, self.c2_path)
             
-            # (Project Tab 不需要在这里处理，因为它有单独的 Load Project 按钮)
+            # --- 接下来是分配逻辑 (Assign logic) ---
+            roles = None 
+            
+            if len(raw_channels) > 2:
+                # 只有这里需要 UI 弹窗介入
+                self.root.config(cursor="")
+                user_roles = self.ask_channel_roles(len(raw_channels))
+                roles = user_roles
+            
+            elif len(raw_channels) == 0:
+                 raise ValueError(f"No channels loaded.")
 
-            # --- 以下是通用的数据分配逻辑 ---
-            if len(channels) == 1:
-                self.data1 = channels[0]
-                self.data2 = None
-                self.data_aux = []
+            # [核心修改] 将数据“塞”回 Model
+            self.session.set_data(raw_channels, roles)
+            
+            # --- UI 后续刷新 (Post-load UI updates) ---
+            
+            # 1. 更新对齐按钮状态 (根据 Model 的数据状态)
+            if self.session.data2 is not None:
+                self.btn_align.config(state="normal", text=self.t("btn_align"), style="TButton")
+                self.ui_elements["lbl_ratio_thr"].config(foreground="black")
+            else:
                 self.btn_align.config(state="disabled")
                 self.ui_elements["lbl_ratio_thr"].config(foreground="gray")
 
-            elif len(channels) == 2:
-                self.data1 = channels[0]
-                self.data2 = channels[1]
-                self.data_aux = []
-                self.btn_align.config(state="normal")
-                self.ui_elements["lbl_ratio_thr"].config(foreground="black")
-
-            elif len(channels) > 2:
-                self.root.config(cursor="")
-                roles = self.ask_channel_roles(len(channels))
-                idx_num = roles["num"]
-                idx_den = roles["den"]
-                self.data1 = channels[idx_num]
-                self.data2 = channels[idx_den]
-                self.data_aux = []
-                for i, d in enumerate(channels):
-                    if i != idx_num and i != idx_den:
-                        self.data_aux.append(d)
-                self.btn_align.config(state="normal")
-                self.ui_elements["lbl_ratio_thr"].config(foreground="black")
-            else:
-                raise ValueError(f"No channels loaded.")
-
-            self.data1_raw = None
-            self.data2_raw = None
+            self.data1_raw = None # Model已重置，这里只需通过 property 访问确保一致
             self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
-            
-            if self.data2 is not None:
-                self.btn_align.config(state="normal", text=self.t("btn_align"), style="TButton")
-            else:
-                self.btn_align.config(state="disabled")
 
-            # 重置视图模式并重建通道按钮栏
+            # 2. 重置视图和 Slider
             self.view_mode = "ratio"
             self.rebuild_channel_bar()
-
-            self.recalc_background()
             
-            # 初始化绘图区
+            # 3. 初始化绘图
+            # 注意：通过 self.data1 访问 (实际上是访问 self.session.data1)
             self.frame_scale.configure(to=self.data1.shape[0]-1)
             self.var_frame.set(0); self.frame_scale.set(0)
+            
             h, w = self.data1.shape[1], self.data1.shape[2]
             self.plot_mgr.init_image((h, w), cmap="coolwarm")
             self.roi_mgr.connect(self.plot_mgr.ax)
@@ -986,8 +1070,31 @@ class RatioAnalyzerApp:
             
         except Exception as e:
             messagebox.showerror("Error", str(e))
+            import traceback
+            traceback.print_exc()
         finally:
             self.root.config(cursor="")
+
+    def check_ready(self):
+        """
+        检查文件是否已选择，从而启用/禁用 'Load' 按钮。
+        """
+        current_tab = self.nb_import.index("current")
+        is_ready = False
+        
+        if current_tab == 0: # Single File
+            if self.dual_path and os.path.exists(self.dual_path):
+                is_ready = True
+        elif current_tab == 1: # Separate Files
+            if (self.c1_path and os.path.exists(self.c1_path) and 
+                self.c2_path and os.path.exists(self.c2_path)):
+                is_ready = True
+                
+        if is_ready:
+            self.btn_load.config(state="normal")
+        else:
+            self.btn_load.config(state="disabled")
+
 
     def clear_all_data(self):
         self.is_playing = False
@@ -1144,22 +1251,13 @@ class RatioAnalyzerApp:
 
 
     def recalc_background(self):
-        if self.data1 is None: return
-        try:
-            p = self.var_bg.get()
-            self.cached_bg1 = calculate_background(self.data1, p)
-            
-            # [修改] 只有当 data2 存在时才计算 bg2
-            if self.data2 is not None:
-                self.cached_bg2 = calculate_background(self.data2, p)
-            else:
-                self.cached_bg2 = 0.0
+        if hasattr(self, 'var_bg'):
+             self.session.bg_percent = self.var_bg.get()
 
-            self.cached_bg_aux = []
-            if hasattr(self, 'data_aux'):
-                for aux in self.data_aux:
-                    self.cached_bg_aux.append(calculate_background(aux, p))
-        except: pass
+        # 2. 调用 Model 计算
+        # Model 内部会更新 cached_bg1, cached_bg2 等
+        self.session.recalc_background()
+        
 
     def select_c1(self):
         p = filedialog.askopenfilename()
@@ -1176,97 +1274,6 @@ class RatioAnalyzerApp:
             self.check_ready()
 
 
-    def inspect_file_metadata(self, filepath):
-        """
-        预读取文件元数据。
-        如果检测到文件本身包含 >1 个通道，则自动禁用 'Mixed Stacks' 和 'Ch Count' 区域，
-        并将文字颜色变灰，给予用户明确的视觉反馈。
-        """
-        # 定义颜色常量
-        COLOR_NORMAL = "#333333"  # 正常深黑色
-        COLOR_DISABLED = "#A0A0A0" # 禁用时的灰色
-
-        # === 1. 初始化：先全部重置为“可用”状态 ===
-        # 这一步很重要：防止用户先选了一个多通道文件（变灰了），又换成单通道文件，
-        # 如果不重置，按钮会一直灰着点不了。
-        self.chk_inter.config(state="normal")
-        self.sp_channels.config(state="normal")
-        
-        # 恢复 Label 颜色 (确保 setup_file_group 里已经定义了 self.lbl_ch_count)
-        if hasattr(self, 'lbl_ch_count'):
-            self.lbl_ch_count.config(foreground=COLOR_NORMAL)
-            
-        # 恢复 Checkbutton 的样式 (虽然改 state 通常就够了，但为了保险)
-        self.chk_inter.state(['!disabled', '!selected']) 
-
-        try:
-            with tiff.TiffFile(filepath) as tif:
-                is_explicit_multichannel = False
-                detected_channels = 0
-
-                # --- 检测逻辑 A: ImageJ Metadata (最常见的情况) ---
-                # ImageJ 格式的 Tiff 通常会在 Metadata 里明确写着 'channels': N
-                if tif.imagej_metadata:
-                    detected_channels = tif.imagej_metadata.get('channels', 1)
-                    if detected_channels > 1:
-                        is_explicit_multichannel = True
-
-                # --- 检测逻辑 B: OME-XML 或 维度分析 (更通用的情况) ---
-                # 如果没有 ImageJ 标签，检查数据的维度 (Shape)
-                if not is_explicit_multichannel and len(tif.series) > 0:
-                    series = tif.series[0]
-                    # series.axes 通常是像 'TZCYX' 这样的字符串
-                    if hasattr(series, 'axes') and 'C' in series.axes:
-                        c_index = series.axes.find('C')
-                        # 检查 C (Channel) 维度的数量是否大于 1
-                        if series.shape[c_index] > 1:
-                            is_explicit_multichannel = True
-                            detected_channels = series.shape[c_index]
-
-                # === 2. 根据检测结果更新 UI ===
-                if is_explicit_multichannel:
-                    print(f"[Metadata] File detected as {detected_channels}-Channel. Disabling manual split.")
-                    
-                    # [动作 1] 取消勾选 (防止误操作)
-                    self.is_interleaved_var.set(False)
-                    
-                    # [动作 2] 禁用控件 (逻辑禁用)
-                    self.chk_inter.config(state="disabled")
-                    self.sp_channels.config(state="disabled")
-                    
-                    # [动作 3] 视觉变灰
-                    # 让 Label 变灰
-                    if hasattr(self, 'lbl_ch_count'):
-                        self.lbl_ch_count.config(foreground=COLOR_DISABLED)
-                    
-                    # (可选) 如果你想自动把通道数设置成检测到的值，可以解开下面这行：
-                    # self.var_n_channels.set(detected_channels)
-                    
-                else:
-                    print("[Metadata] File detected as 1-Channel (or unknown). User can manually split.")
-                    # 保持默认启用状态即可
-
-        except Exception as e:
-            print(f"Metadata inspection failed: {e}")
-            # 如果读取出错（比如不是 Tiff 文件），为了安全起见，保持选项开启，让用户手动决定
-            self.chk_inter.config(state="normal")
-            self.sp_channels.config(state="normal")
-            if hasattr(self, 'lbl_ch_count'):
-                self.lbl_ch_count.config(foreground=COLOR_NORMAL)
-
-    def check_ready(self):
-        current_tab = self.nb_import.index("current")
-        # Tab 0: Single File
-        if current_tab == 0:
-            if self.dual_path: self.btn_load.config(state="normal")
-            else: self.btn_load.config(state="disabled")
-        # Tab 1: Separate Files
-        elif current_tab == 1:
-            if self.c1_path and self.c2_path: self.btn_load.config(state="normal")
-            else: self.btn_load.config(state="disabled")
-        # Tab 2: Project (Project tab doesn't use the main Load button)
-        else:
-            self.btn_load.config(state="disabled")
 
 
 
@@ -1278,23 +1285,51 @@ class RatioAnalyzerApp:
         self.pb_align["value"] = 0
         threading.Thread(target=self.alignment_task, daemon=True).start()
 
+
+
     def alignment_task(self):
         try:
-            if self.data1_raw is None:
-                self.data1_raw = self.data1.copy()
-                self.data2_raw = self.data2.copy()
+            # 定义回调函数，用于更新 GUI 的进度条
+            # 这里的逻辑是：Model 在后台线程跑，每处理一帧调用一次这个函数
+            # 我们用 self.root.after 把更新指令发回主线程，防止界面卡死或闪退
             def progress_cb(curr, total):
                 self.root.after(0, lambda: self.pb_align.configure(value=(curr/total)*100))
-            d1_aligned, d2_aligned = align_stack_ecc(self.data1, self.data2, progress_callback=progress_cb)
-            self.data1 = d1_aligned
-            self.data2 = d2_aligned
+            
+            # [CALL MODEL] 所有的脏活累活都在这里面
+            self.session.align_data(progress_callback=progress_cb)
+            
+            # 完成后通知 UI 刷新按钮状态
             self.root.after(0, self.alignment_done_ui)
+            
         except ImportError:
+            # 专门捕获缺少 OpenCV 的错误
             self.root.after(0, lambda: messagebox.showerror("Error", "OpenCV not found.\nPlease run: pip install opencv-python"))
             self.root.after(0, self.alignment_reset_ui)
         except Exception as e:
+            # 捕获其他未知错误
             self.root.after(0, lambda: messagebox.showerror("Alignment Error", str(e)))
             self.root.after(0, self.alignment_reset_ui)
+
+
+    def undo_alignment(self):
+        # [CALL MODEL] 尝试撤销
+        success = self.session.undo_alignment()
+        
+        if success:
+            # 如果撤销成功，刷新图像
+            self.update_plot()
+            
+            # 更新按钮样式 (变绿一下提示用户)
+            self.btn_undo_align.config(text=self.t("btn_undo_done"), style="Success.TButton")
+            self.btn_align.config(text=self.t("btn_align"), style="TButton")
+            
+            # 1秒后把撤销按钮变回灰色禁用状态
+            def restore_undo_btn():
+                try: 
+                    self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
+                except: pass
+            self.root.after(1000, restore_undo_btn)
+
 
     def alignment_done_ui(self):
         self.recalc_background()
@@ -1308,58 +1343,33 @@ class RatioAnalyzerApp:
         self.pb_align.pack_forget()
         self.btn_load.config(state="normal")
         self.btn_align.config(state="normal")
-
-    def undo_alignment(self):
-        if self.data1_raw is not None:
-            self.data1 = self.data1_raw.copy()
-            self.data2 = self.data2_raw.copy()
-            self.recalc_background()
-            self.update_plot()
-            self.data1_raw = None
-            self.data2_raw = None
-            self.btn_undo_align.config(text=self.t("btn_undo_done"), style="Success.TButton")
-            self.btn_align.config(text=self.t("btn_align"), style="TButton")
-            def restore_undo_btn():
-                try: self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
-                except: pass
-            self.root.after(1000, restore_undo_btn)
+    
 
     def get_processed_frame(self, frame_idx):
-        d_num, d_den, bg_num, bg_den = self.get_active_data()
-        if d_num is None: return None
+        """
+        [Refactored] 仅作为“参数收集器”。
+        收集 UI 上的滑块值、复选框状态，打包传给 Model，然后直接返回结果。
+        """
+        # 1. 收集 UI 参数
+        int_th = self.var_int_thresh.get()
+        ratio_th = self.var_ratio_thresh.get()
         
-        # === 逻辑分支 ===
+        # 只有当 Smooth > 0 时才传值，且转为 int
+        sm_val = int(self.var_smooth.get())
         
-        # 1. 原始通道模式 (Ch1, Ch2, Aux)
-        if self.view_mode == "ch1":
-            # 返回：(数据 - 背景)，并 Clip 掉负值
-            raw = d_num[frame_idx].astype(np.float32) - bg_num
-            return np.clip(raw, 0, None)
-            
-        elif self.view_mode == "ch2":
-            if d_den is None: return None
-            raw = d_den[frame_idx].astype(np.float32) - bg_den
-            return np.clip(raw, 0, None)
-            
-        elif self.view_mode.startswith("aux_"):
-            try:
-                idx = int(self.view_mode.split("_")[1])
-                if idx < len(self.data_aux):
-                    # Aux 也有背景吗？目前我们在 recalc_background 里算过 cached_bg_aux
-                    bg_val = self.cached_bg_aux[idx] if idx < len(self.cached_bg_aux) else 0
-                    raw = self.data_aux[idx][frame_idx].astype(np.float32) - bg_val
-                    return np.clip(raw, 0, None)
-            except: return None
+        is_log = self.log_var.get()
+        use_custom_bg = self.use_custom_bg_var.get()
 
-        # 2. Ratio / Main 模式 (默认)
-        # 这里维持原来的逻辑，进行比率计算、阈值过滤、平滑等
-        return process_frame_ratio(
-            d_num[frame_idx], 
-            d_den[frame_idx] if d_den is not None else None,
-            bg_num, bg_den,
-            self.var_int_thresh.get(), self.var_ratio_thresh.get(),
-            int(self.var_smooth.get()), False 
+        # 2. 委托给 Model 计算
+        return self.session.get_processed_frame(
+            frame_idx=frame_idx,
+            int_thresh=int_th,
+            ratio_thresh=ratio_th,
+            smooth_size=sm_val,
+            log_scale=is_log,
+            use_custom_bg=use_custom_bg
         )
+
 
     def toggle_scale_mode(self):
         if self.lock_var.get():
@@ -1453,49 +1463,114 @@ class RatioAnalyzerApp:
     
     def save_stack_task(self):
         try:
-            self.thread_safe_config(self.ui_elements["btn_save_stack"], state="disabled", text="⏳ Saving...")
+            # 1. 禁用按钮，防止重复点击
+            # 注意：在线程中操作 UI 最好用 after，或者确保这是在主线程触发前的状态更新
+            self.root.after(0, lambda: self.ui_elements["btn_save_stack"].config(state="disabled", text="⏳ Saving..."))
+            
+            # 2. 弹出文件保存对话框 (必须在主线程，这里通常没问题，因为 thread 是在 task 内部启动的还是外部？)
+            # 假设这个 task 是被 threading.Thread 调用的，那么 ask_filename 最好在外部做。
+            # 但为了兼容旧逻辑，如果原本就是直接调用的，我们先这样写。
+            # 如果这是一个线程函数，filedialog 可能会卡住。
+            # 为了稳妥，建议逻辑是：主线程获取路径 -> 启动子线程保存。
+            # 但为了少改动，我们假设这里运行环境和之前一致。
+            
             ts = datetime.datetime.now().strftime("%H%M%S")
+            # 注意：filedialog 并不是完全线程安全的，但在 Windows 上通常能跑
             path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Ratio_Stack_{ts}.tif")
-            if not path: return
-            with tiff.TiffWriter(path, bigtiff=True) as tif:
-                for i in range(self.data1.shape[0]):
-                    if i%10==0: self.thread_safe_config(self.ui_elements["btn_save_stack"], text=f"⏳ {i}/{self.data1.shape[0]}")
-                    tif.write(self.get_processed_frame(i).astype(np.float32), contiguous=True)
-            self.root.after(0, lambda: messagebox.showinfo("OK", f"Saved: {path}"))
-        except Exception as e: self.root.after(0, lambda: messagebox.showerror("Err", str(e)))
-        finally: 
-            self.thread_safe_config(self.ui_elements["btn_save_stack"], state="normal", text=self.t("btn_save_stack"))
+            
+            if not path: 
+                # 取消了，恢复按钮
+                self.root.after(0, lambda: self.ui_elements["btn_save_stack"].config(state="normal", text=self.t("btn_save_stack")))
+                return
+            
+            # 3. 收集参数 (从 UI 变量获取)
+            params = {
+                "int_thresh": self.var_int_thresh.get(),
+                "ratio_thresh": self.var_ratio_thresh.get(),
+                "smooth": int(self.var_smooth.get()),
+                "log_scale": self.log_var.get(),
+                "use_custom_bg": self.use_custom_bg_var.get()
+            }
 
+            # 4. 定义进度回调 (用于更新按钮文字)
+            def progress_cb(curr, total):
+                # 使用 root.after 确保 UI 更新在主线程执行
+                self.root.after(0, lambda: self.ui_elements["btn_save_stack"].config(text=f"⏳ {curr}/{total}"))
+
+            # 5. [CALL MODEL] 执行保存
+            self.session.export_processed_stack(path, params, progress_callback=progress_cb)
+            
+            # 6. 完成提示
+            self.root.after(0, lambda: messagebox.showinfo("Success", f"Stack saved to:\n{path}"))
+            
+        except Exception as e: 
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Save failed: {e}"))
+            # 打印报错堆栈以便调试
+            import traceback; traceback.print_exc()
+        finally: 
+            # 无论成功失败，最后都要恢复按钮
+            self.root.after(0, lambda: self.ui_elements["btn_save_stack"].config(state="normal", text=self.t("btn_save_stack")))
     def save_raw_thread(self):
         if self.data1 is None: return
         threading.Thread(target=self.save_raw_task).start()
 
+
+
     def save_raw_task(self):
         try:
-            self.thread_safe_config(self.ui_elements["btn_save_raw"], state="disabled", text="⏳ Saving...")
+            self.root.after(0, lambda: self.ui_elements["btn_save_raw"].config(state="disabled", text="⏳ Saving..."))
+            
             ts = datetime.datetime.now().strftime("%H%M%S")
             path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Clean_Ratio_Stack_{ts}.tif")
-            if not path: return
-            d_num, d_den, bg_num, bg_den = self.get_active_data()
-            with tiff.TiffWriter(path, bigtiff=True) as tif:
-                for i in range(d_num.shape[0]):
-                    if i%10==0: self.thread_safe_config(self.ui_elements["btn_save_raw"], text=f"⏳ {i}/{d_num.shape[0]}")
-                    ratio_frame = process_frame_ratio(
-                        d_num[i], d_den[i],
-                        bg_num, bg_den,
-                        self.var_int_thresh.get(), self.var_ratio_thresh.get(),
-                        smooth_size=0, log_scale=False
-                    )
-                    tif.write(ratio_frame.astype(np.float32), contiguous=True)
-            self.root.after(0, lambda: messagebox.showinfo("OK", f"Saved Clean Ratio Stack: {path}"))
-        except Exception as e: self.root.after(0, lambda: messagebox.showerror("Err", str(e)))
+            if not path: 
+                self.root.after(0, lambda: self.ui_elements["btn_save_raw"].config(state="normal", text=self.t("btn_save_raw")))
+                return
+            
+            # 收集参数
+            i_th = self.var_int_thresh.get()
+            r_th = self.var_ratio_thresh.get()
+            
+            def progress_cb(curr, total):
+                self.root.after(0, lambda: self.ui_elements["btn_save_raw"].config(text=f"⏳ {curr}/{total}"))
+
+            # [CALL MODEL]
+            self.session.export_raw_ratio_stack(path, i_th, r_th, progress_callback=progress_cb)
+            
+            self.root.after(0, lambda: messagebox.showinfo("Success", f"Raw Ratio saved to:\n{path}"))
+            
+        except Exception as e: 
+            self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
         finally: 
-            self.thread_safe_config(self.ui_elements["btn_save_raw"], state="normal", text=self.t("btn_save_raw"))
+            self.root.after(0, lambda: self.ui_elements["btn_save_raw"].config(state="normal", text=self.t("btn_save_raw")))
+
+
 
     def save_current_frame(self):
-        if self.data1 is None: return
-        path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Ratio_F{self.var_frame.get()}.tif")
-        if path: tiff.imwrite(path, self.get_processed_frame(self.var_frame.get()))
+        # 检查是否有数据 (通过 session 检查)
+        if self.session.data1 is None: return
+        
+        # 弹出对话框
+        ts = datetime.datetime.now().strftime("%H%M%S")
+        path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Ratio_Frame_{self.var_frame.get()}_{ts}.tif")
+        if not path: return
+        
+        # 收集参数
+        params = {
+            "int_thresh": self.var_int_thresh.get(),
+            "ratio_thresh": self.var_ratio_thresh.get(),
+            "smooth": int(self.var_smooth.get()),
+            "log_scale": self.log_var.get(),
+            "use_custom_bg": self.use_custom_bg_var.get()
+        }
+        
+        try:
+            # [CALL MODEL]
+            self.session.export_current_frame(path, self.var_frame.get(), params)
+            messagebox.showinfo("Success", f"Frame saved to:\n{path}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save frame: {e}")
+
+
 
     def on_frame_slide(self, v):
         self.var_frame.set(int(float(v))); self.lbl_frame.config(text=f"{self.var_frame.get()}/{self.data1.shape[0]-1}")
