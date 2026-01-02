@@ -1,0 +1,25 @@
+name: Sync to GitCode
+
+on:
+  push:
+    branches:
+      - main  # 或者 master，根据你的主分支名称修改
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  git-mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # 必须设置为0，否则无法获取完整的 commit 历史用于镜像
+
+      - name: Push to GitCode
+        uses: wearerequired/git-mirror-action@v1
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }} # 如果用 SSH 方式（可选）
+        with:
+          # 源仓库 (当前仓库)
+          source-repo: "git@github.com:Epivitae/RatioImagingAnalyzer.git"
+          # 目标仓库 (GitCode)
+          destination-repo: "https://Epivitae:${{ secrets.GITCODE_TOKEN }}@gitcode.com/Epivitae/RatioImagingAnalyzer.git"
