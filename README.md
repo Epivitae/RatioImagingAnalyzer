@@ -5,6 +5,7 @@
 
   <p>
     <a href="https://pypi.org/project/ria-gui/"><img src="https://img.shields.io/pypi/v/ria-gui?color=blue" alt="PyPI"></a>
+    <a href="https://github.com/Epivitae/RatioImagingAnalyzer/releases/latest"><img src="https://img.shields.io/github/v/release/Epivitae/RatioImagingAnalyzer?label=Download&logo=github&color=2ea44f" alt="Download Latest Release"></a>
     <a href="https://joss.theoj.org/papers/@epivitae"><img src="https://joss.theoj.org/papers/please-replace-with-your-id/status.svg" alt="Status"></a>
     <a href="https://doi.org/10.5281/zenodo.18091693"><img src="https://img.shields.io/badge/DOI-10.5281%2Fzenodo.18091693-0099CC" alt="DOI"></a>
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.8%2B-3776AB?logo=python&logoColor=white" alt="Python"></a>
