@@ -56,92 +56,82 @@ class AnalysisSession:
         self.fps: int = 10 
         self.is_playing: bool = False
         self.view_mode: str = "ratio" # ratio, ch1, ch2, aux_0...
+        self.alignment_matrices = [] # [新增] 存储位移矩阵
+        self.current_roles = None
 
-    def inspect_file_metadata(self, filepath: str) -> Tuple[bool, int]:
+
+    # [替换方法 1]
+    def inspect_file_metadata(self, filepath: str) -> Tuple[bool, int, int]:
         """
-        检查文件的元数据，判断是否为明确的多通道 Tiff 文件。
-        
-        该方法不会读取整个图像数据，仅读取头信息，因此速度很快。
-        
-        Args:
-            filepath (str): 目标文件的完整路径。
-            
+        检查文件的元数据。
         Returns:
-            Tuple[bool, int]: 
-                - is_multichannel (bool): 如果检测到明确的多通道标记，返回 True。
-                - channel_count (int): 检测到的通道数量。如果未检测到，默认为 0。
+            - is_multichannel (bool): 是否明确为多通道
+            - channel_count (int): 通道数
+            - z_slice_count (int): Z轴层数 (默认为1)
         """
-        # 初始化默认返回值
         is_explicit_multichannel = False
         detected_channels = 0
+        detected_z = 1
 
         try:
-            # 使用 tifffile 上下文管理器打开文件
             with tiff.TiffFile(filepath) as tif:
                 
                 # --- 检测逻辑 A: ImageJ Metadata ---
-                # ImageJ 格式通常在 metadata 中包含 'channels' 字段
                 if tif.imagej_metadata:
-                    # 获取通道数，默认为 1
                     detected_channels = tif.imagej_metadata.get('channels', 1)
+                    detected_z = tif.imagej_metadata.get('slices', 1) # ImageJ 'slices' 通常指 Z
                     
                     if detected_channels > 1:
                         is_explicit_multichannel = True
-                        return is_explicit_multichannel, detected_channels
 
-                # --- 检测逻辑 B: OME-XML 或 维度分析 ---
-                # 检查 Series 0 的维度信息
+                # --- 检测逻辑 B: OME-XML 或 Axes 字符串 ---
                 if len(tif.series) > 0:
                     series = tif.series[0]
                     
-                    # 检查 axes 属性 (例如 'TZCYX')
                     if hasattr(series, 'axes'):
-                        axes_str = series.axes
+                        axes_str = series.axes # 例如 'TZCYX'
                         
+                        # 尝试获取 C 维度
                         if 'C' in axes_str:
                             c_index = axes_str.find('C')
-                            # 获取 C 维度的长度
                             c_dim = series.shape[c_index]
-                            
                             if c_dim > 1:
                                 is_explicit_multichannel = True
                                 detected_channels = c_dim
+                        
+                        # 尝试获取 Z 维度
+                        if 'Z' in axes_str:
+                            z_index = axes_str.find('Z')
+                            detected_z = series.shape[z_index]
                                 
         except Exception as e:
-            # 记录错误但不中断程序
             print(f"[Model Warning] Metadata inspection failed for {filepath}: {e}")
             
-        return is_explicit_multichannel, detected_channels
+        return is_explicit_multichannel, detected_channels, detected_z
 
+    # [替换方法 2]
     def load_channels_from_file(self, 
                                 filepath: str, 
                                 is_interleaved: bool, 
-                                expected_channels: int) -> List[np.ndarray]:
+                                expected_channels: int,
+                                z_proj_method: str = None) -> List[np.ndarray]:
         """
-        从单个文件中读取并分离通道数据。
-        
-        Args:
-            filepath (str): 文件路径。
-            is_interleaved (bool): 是否为交错堆栈 (Ch1, Ch2, Ch1, Ch2...)。
-            expected_channels (int): 如果是交错模式，指定的通道数量。
-            
-        Returns:
-            List[np.ndarray]: 包含各个通道图像矩阵的列表。
-            
-        Raises:
-            ValueError: 当文件无法读取或通道分离失败时抛出。
+        从单个文件中读取并分离通道数据，支持 Z-Projection。
         """
         if not filepath or not os.path.exists(filepath):
             raise ValueError(f"File not found: {filepath}")
             
-        # 调用 io_utils 中的底层函数
+        # 调用底层工具，传入 z_projection_method
         channels = read_and_split_multichannel(
             filepath, 
             is_interleaved, 
-            expected_channels
+            expected_channels,
+            z_projection_method=z_proj_method
         )
         
         return channels
+
+
 
     def load_separate_channels(self, path1: str, path2: str) -> List[np.ndarray]:
         """
@@ -175,11 +165,19 @@ class AnalysisSession:
                                     如果不传，则根据列表长度自动分配。
         """
         count = len(data_list)
+
+        # [新增] 记录当前的分配方案，以便保存到工程文件
+        if roles:
+            self.current_roles = roles
+        else:
+            # 如果没有指定 roles，则记录默认值 (0=Num, 1=Den)
+            self.current_roles = {"num": 0, "den": 1} if count >= 2 else {"num": 0, "den": None}
         
         # 重置当前数据
         self.data1 = None
         self.data2 = None
         self.data_aux = []
+        self.alignment_matrices = []
         
         # --- 情况 1: 单通道 ---
         if count == 1:
@@ -222,25 +220,15 @@ class AnalysisSession:
         self.data1_raw = None
         self.data2_raw = None
         
-        # 自动重新计算背景
-        self.recalc_background()
+        
+        self.recalc_background() # 自动重新计算背景
+        self.alignment_matrices = [] #存储位移矩阵
 
 
     def align_data(self, progress_callback=None) -> None:
         """
         执行图像配准 (ECC 算法)。
-        
-        Args:
-            progress_callback (callable, optional): 
-                回调函数，签名需为 (current_frame, total_frames)。
-                用于向 UI 报告进度。
-                
-        Raises:
-            ImportError: 如果没有安装 OpenCV。
-            ValueError: 如果数据为空。
         """
-        # 延迟导入，防止循环依赖或 OpenCV 未安装导致的崩溃
-        # 这样只有在用户真正点击“配准”时，才会检查 cv2
         try:
             from processing import align_stack_ecc
         except ImportError:
@@ -253,20 +241,17 @@ class AnalysisSession:
             raise ValueError("No data to align.")
 
         # 1. 备份原始数据 (用于 Undo)
-        # 只有在第一次配准时备份；如果已经在配准状态，就不覆盖原始备份了
         if self.data1_raw is None:
             self.data1_raw = self.data1.copy()
-            # 如果是双通道，也备份 data2
             if self.data2 is not None:
                 self.data2_raw = self.data2.copy()
 
         # 2. 准备配准目标
-        # 如果是单通道(data2 is None)，就用 data1 自己对自己配准(虽然少见，但逻辑上通顺)
-        # 如果是双通道，根据 processing.py 的逻辑，通常是用一个参考另一个
         target_data2 = self.data2 if self.data2 is not None else self.data1
         
-        # 3. 调用纯算法 (耗时操作)
-        d1_aligned, d2_aligned = align_stack_ecc(
+        # 3. [修正] 调用算法 (只调用一次，接收 3 个返回值)
+        # 删除之前多余的 d1_aligned, d2_aligned = align_stack_ecc(...) 调用
+        d1_aligned, d2_aligned, matrices = align_stack_ecc(
             self.data1, 
             target_data2, 
             progress_callback=progress_callback
@@ -276,9 +261,12 @@ class AnalysisSession:
         self.data1 = d1_aligned
         if self.data2 is not None:
             self.data2 = d2_aligned
+
+        self.alignment_matrices = matrices
             
-        # 5. 配准后像素位置变了，必须重新计算背景值，否则背景扣除会错位
+        # 5. 配准后像素位置变了，必须重新计算背景值
         self.recalc_background()
+
 
     def undo_alignment(self) -> bool:
         """
@@ -296,6 +284,7 @@ class AnalysisSession:
             # 清空备份 (表示回到了原始状态)
             self.data1_raw = None
             self.data2_raw = None
+            self.alignment_matrices = []
             
             # 数据变了，重新计算背景
             self.recalc_background()
@@ -303,6 +292,34 @@ class AnalysisSession:
             
         return False
 
+
+    def apply_existing_alignment(self, matrices_data):
+        """
+        [新增] 直接应用保存的矩阵 (Loading Project 时调用)
+        """
+        try:
+            from processing import apply_alignment_matrices
+        except: return
+
+        if self.data1 is None: return
+
+        # 1. 转换 JSON 列表回 Numpy 数组
+        # JSON里存的是 list of lists, 我们需要 list of np.array
+        matrices = [np.array(m, dtype=np.float32) for m in matrices_data]
+        
+        # 2. 备份原始数据
+        if self.data1_raw is None:
+            self.data1_raw = self.data1.copy()
+            if self.data2 is not None: self.data2_raw = self.data2.copy()
+            
+        # 3. 快速应用
+        self.data1 = apply_alignment_matrices(self.data1, matrices)
+        if self.data2 is not None:
+            self.data2 = apply_alignment_matrices(self.data2, matrices)
+            
+        # 4. 保存状态
+        self.alignment_matrices = matrices
+        self.recalc_background()
 
     def recalc_background(self) -> None:
         """
@@ -334,7 +351,8 @@ class AnalysisSession:
                             ratio_thresh: float = 0,
                             smooth_size: int = 0,
                             log_scale: bool = False,
-                            use_custom_bg: bool = False) -> Optional[np.ndarray]:
+                            use_custom_bg: bool = False,
+                            swap_channels: bool = False) -> Optional[np.ndarray]: # <--- [必须加上这一行]
         """
         [Pipeline] 获取处理后的一帧图像 (Intensity 或 Ratio)。
         
@@ -345,6 +363,7 @@ class AnalysisSession:
             smooth_size (int): 平滑内核大小。
             log_scale (bool): 是否进行对数变换。
             use_custom_bg (bool): 是否使用自定义 ROI 背景 (而非全局百分位)。
+            swap_channels (bool): 是否交换分子分母 (即 Ch2/Ch1)。
         
         Returns:
             Optional[np.ndarray]: 处理后的图像矩阵 (2D)。
@@ -362,6 +381,18 @@ class AnalysisSession:
             bg1 = self.cached_bg1
             bg2 = self.cached_bg2
             bg_aux_list = self.cached_bg_aux
+
+        # [新增] 处理通道交换 (同时交换数据和背景)
+        d_num = self.data1
+        d_den = self.data2
+        bg_num = bg1
+        bg_den = bg2
+
+        if swap_channels and self.data2 is not None:
+            d_num = self.data2
+            d_den = self.data1
+            bg_num = bg2
+            bg_den = bg1
 
         # 2. 根据 view_mode 决定返回什么
         
@@ -398,9 +429,9 @@ class AnalysisSession:
         # --- Case D: Ratio / Intensity 模式 (默认) ---
         # 调用 processing 模块的核心算法
         return process_frame_ratio(
-            self.data1[frame_idx], 
-            self.data2[frame_idx] if self.data2 is not None else None,
-            bg1, bg2,
+            d_num[frame_idx], 
+            d_den[frame_idx] if d_den is not None else None,
+            bg_num, bg_den,
             int_thresh, 
             ratio_thresh,
             smooth_size, 

@@ -19,7 +19,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 try:
     from .constants import LANG_MAP
     from .components import ToggledFrame
-    from .io_utils import read_and_split_multichannel, read_separate_files, read_and_split_dual_channel
+    from .io_utils import read_and_split_multichannel, read_separate_files 
     from .gui_components import PlotManager, RoiManager
     from .model import AnalysisSession
 
@@ -27,13 +27,12 @@ except ImportError:
     try:
         from constants import LANG_MAP
         from components import ToggledFrame
-        from io_utils import read_and_split_multichannel, read_separate_files, read_and_split_dual_channel
+        from io_utils import read_and_split_multichannel, read_separate_files
         from gui_components import PlotManager, RoiManager
         from model import AnalysisSession
 
     except ImportError as e:
         print(f"Import Error: {e}. Ensure all modules exist.")
-
 
 try:
     from ._version import __version__
@@ -46,7 +45,6 @@ except ImportError:
 warnings.filterwarnings('ignore')
 
 
-# [新增] Kymograph 窗口控制器类
 class KymographWindow:
     def __init__(self, master, roi_id, title="Kymograph"):
         self.window = Toplevel(master)
@@ -232,52 +230,46 @@ class RatioAnalyzerApp:
     @custom_bg2.setter
     def custom_bg2(self, value): self.session.custom_bg2 = value
 
+
     def inspect_file_metadata(self, filepath):
         """
-        [Refactored] 预读取文件元数据。
-        核心检测逻辑已移至 Model (self.session)，GUI 仅根据返回结果更新 UI 状态。
+        预读取文件元数据，检测多通道和 Z-Stack。
         """
-        # 定义颜色常量
-        COLOR_NORMAL = "#333333"  # 正常深黑色
-        COLOR_DISABLED = "#A0A0A0" # 禁用时的灰色
+        COLOR_NORMAL = "#333333"
+        COLOR_DISABLED = "#A0A0A0"
 
-        # === 1. UI 初始化：先全部重置为“可用”状态 ===
-        # 防止用户先选了一个多通道文件（变灰了），又换成单通道文件，UI 却没恢复
+        # 1. UI 初始化复位
         self.chk_inter.config(state="normal")
-        self.sp_channels.config(state="normal")
-        
-        # 恢复 Checkbutton 的样式
         self.chk_inter.state(['!disabled', '!selected']) 
-        
-        # 恢复 Label 颜色 (确保 setup_file_group 里已经定义了 self.lbl_ch_count)
-        if hasattr(self, 'lbl_ch_count'):
-            self.lbl_ch_count.config(foreground=COLOR_NORMAL)
+        self.sp_channels.config(state="normal")
+        if hasattr(self, 'lbl_ch_count'): self.lbl_ch_count.config(foreground=COLOR_NORMAL)
 
-        # === 2. 调用 Model 获取检测结果 ===
-        # 这一步不再依赖 gui.py 里的 tifffile，而是问 session
-        is_explicit_multichannel, detected_channels = self.session.inspect_file_metadata(filepath)
+        # 2. 调用 Model
+        is_explicit_multichannel, detected_channels, detected_z = self.session.inspect_file_metadata(filepath)
 
-        # === 3. 根据结果更新 UI ===
+        # 3. 更新 Channel 状态
         if is_explicit_multichannel:
             print(f"[Metadata] File detected as {detected_channels}-Channel. Disabling manual split.")
-            
-            # [动作 1] 强制取消勾选 "Mixed Stacks" (防止误操作)
             self.is_interleaved_var.set(False)
-            
-            # [动作 2] 禁用控件 (逻辑禁用)
             self.chk_inter.config(state="disabled")
             self.sp_channels.config(state="disabled")
-            
-            # [动作 3] 视觉变灰 (给用户反馈)
-            if hasattr(self, 'lbl_ch_count'):
-                self.lbl_ch_count.config(foreground=COLOR_DISABLED)
-            
+            if hasattr(self, 'lbl_ch_count'): self.lbl_ch_count.config(foreground=COLOR_DISABLED)
         else:
             print("[Metadata] File detected as 1-Channel (or unknown). User can manually split.")
-            # 保持默认启用状态即可
 
-
-
+        # 4. [修改] 更新 Z-Stack 状态 (使用简洁符号)
+        if detected_z > 1:
+            print(f"[Metadata] Z-Stack detected: {detected_z} slices.")
+            self.lbl_z_indicator.config(text=f"❏{detected_z}", style="BadgeOrange.TLabel")
+            
+            # 启用投影选择
+            self.lbl_z_proj.config(state="normal", foreground=COLOR_NORMAL)
+            self.combo_z_proj.config(state="readonly")
+        else:
+            # 隐藏徽章和禁用选择
+            self.lbl_z_indicator.config(text="", style="White.TLabel")
+            self.lbl_z_proj.config(state="disabled", foreground=COLOR_DISABLED)
+            self.combo_z_proj.config(state="disabled")
 
     def auto_load_project(self, filepath):
         """
@@ -365,21 +357,10 @@ class RatioAnalyzerApp:
         style.configure("Blue.TLabel", foreground=BLUE_COLOR, font=self.f_bold)
         
         style.configure("Toggle.TButton", font=self.f_normal, background="#FFFFFF", borderwidth=1, padding=5)
-        style.configure("Toggle.TButton", font=self.f_normal, background="#FFFFFF", borderwidth=1, padding=5)
         style.map("Toggle.TButton", 
-            background=[
-                ("selected", "#E8F0FE"), 
-                ("disabled", "#E0E0E0"), 
-                ("active", "#F5F5F5")
-            ], 
-            foreground=[
-                ("selected", BLUE_COLOR), 
-                ("disabled", "#A0A0A0")
-            ], 
-            relief=[
-                ("selected", "sunken"), 
-                ("!selected", "raised")
-            ]
+            background=[("selected", "#E8F0FE"), ("disabled", "#E0E0E0"), ("active", "#F5F5F5")], 
+            foreground=[("selected", BLUE_COLOR), ("disabled", "#A0A0A0")], 
+            relief=[("selected", "sunken"), ("!selected", "raised")]
         )
         style.configure("Starred.TButton", font=self.f_normal, foreground="#F5C518")
         style.configure("Compact.TButton", font=self.f_normal, padding=5, width=3) 
@@ -388,39 +369,20 @@ class RatioAnalyzerApp:
         style.configure("Toolbutton", background=CARD_COLOR, relief="flat", borderwidth=0, padding=4)
         style.map("Toolbutton", background=[("selected", "#E8F0FE")], relief=[("selected", "sunken")])
         
-        style.configure(
-            "BadgeBlue.TLabel", 
-            background=BLUE_COLOR, 
-            foreground="white", 
-            font=("Segoe UI", 9, "bold"),
-            padding=(8, 2)  
-        )
+        style.configure("BadgeBlue.TLabel", background=BLUE_COLOR, foreground="white", font=("Segoe UI", 9, "bold"), padding=(8, 2))
+        style.configure("BadgeGreen.TLabel", background=GREEN_COLOR, foreground="white", font=("Segoe UI", 9, "bold"), padding=(8, 2))
 
-        style.configure(
-            "BadgeGreen.TLabel", 
-            background=GREEN_COLOR, 
-            foreground="white", 
-            font=("Segoe UI", 9, "bold"),
-            padding=(8, 2)
-        )
+        # [新增] 橙色徽章用于 Z-Stack
+        style.configure("BadgeOrange.TLabel", background="#fd7e14", foreground="white", font=("Segoe UI", 9, "bold"), padding=(8, 2))
 
-        # === [新增] 蓝色主题样式 (用于 Line ROI 和 Kymo 按钮) ===
-        # 1. 蓝色文字的工具按钮 (用于直线 ROI 图标)
         style.configure("Blue.Toolbutton", background=CARD_COLOR, relief="flat", borderwidth=0, padding=4, foreground="#007acc", font=("Segoe UI", 10, "bold"))
-        style.map("Blue.Toolbutton", 
-            background=[("selected", "#E8F0FE")], 
-            relief=[("selected", "sunken")],
-            foreground=[("selected", "#0056b3"), ("!selected", "#007acc")]
-        )
+        style.map("Blue.Toolbutton", background=[("selected", "#E8F0FE")], relief=[("selected", "sunken")], foreground=[("selected", "#0056b3"), ("!selected", "#007acc")])
 
-        # 2. 蓝色文字的普通按钮 (用于 Kymo 按钮)
         style.configure("Blue.TButton", font=self.f_normal, foreground="#007acc")
-        style.map("Blue.TButton",
-            foreground=[("disabled", "#A0A0A0"), ("!disabled", "#007acc")]
-        )
-        
+        style.map("Blue.TButton", foreground=[("disabled", "#A0A0A0"), ("!disabled", "#007acc")])
 
         self.style = style
+
 
     def get_asset_path(self, filename):
         if hasattr(sys, '_MEIPASS'):
@@ -440,22 +402,36 @@ class RatioAnalyzerApp:
         self.current_lang = "en" if self.current_lang == "cn" else "cn"
         self.update_language()
 
+
+
     def update_language(self):
         self.root.title(self.t("window_title").format(self.VERSION))
-        self.lbl_title.config(text=self.t("header_title"))
+        
+        # 检查 lbl_title 是否存在 (防止销毁后报错)
+        if hasattr(self, 'lbl_title'):
+            self.lbl_title.config(text=self.t("header_title"))
+            
         for key, widget in self.ui_elements.items():
+            # [核心修复] 跳过动态数值标签
+            # 凡是以 "val_" 开头的 key，都是用来显示数字的，不参与翻译
+            if key.startswith("val_"):
+                continue
+                
             try:
                 if callable(widget): 
                     widget(self.t(key))
                 else:
                     widget.config(text=self.t(key))
             except: pass
+            
         if self.c1_path is None: self.lbl_c1_path.config(text=self.t("lbl_no_file"))
         if self.c2_path is None: self.lbl_c2_path.config(text=self.t("lbl_no_file"))
         if self.dual_path is None: self.lbl_dual_path.config(text=self.t("lbl_no_file"))
         
         if hasattr(self, 'combo_mode'):
             self.update_mode_options()
+
+
 
     def change_font_size(self, delta):
         new_size = self.current_font_size + delta
@@ -548,6 +524,7 @@ class RatioAnalyzerApp:
             import traceback
             traceback.print_exc() # 打印完整堆栈以便调试
 
+
     def setup_file_group(self):
         self.grp_file = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
         self.grp_file.pack(fill="x", pady=(0, 10))
@@ -557,63 +534,59 @@ class RatioAnalyzerApp:
         self.nb_import.pack(fill="x", expand=True)
         self.nb_import.bind("<<NotebookTabChanged>>", lambda e: self.check_ready())
         
-        # === Tab 1: Single File (单文件 - 最常用) ===
+        # === Tab 1: Single File ===
         self.tab_dual = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
         self.nb_import.add(self.tab_dual, text=" Single File ")
         self.ui_elements["tab_dual"] = lambda text: self.nb_import.tab(0, text=text) 
         
-        # --- Row 1: Select File & Path & Indicator ---
+        # --- Row 1: Select File & Indicators ---
         f_row = ttk.Frame(self.tab_dual, style="White.TFrame")
         f_row.pack(fill="x", pady=1)
 
-        # 1. 左边：选择文件按钮
         self.btn_dual = ttk.Button(f_row, command=self.select_dual, text="📂 Select File")
         self.btn_dual.pack(side="left")
         self.ui_elements["btn_dual"] = self.btn_dual
 
-        # 2. [关键修复] 右边：先占位徽章，保证不被遮挡
+        # [布局调整] 徽章区
         self.lbl_ch_indicator = ttk.Label(f_row, text="", style="White.TLabel")
-        self.lbl_ch_indicator.pack(side="right", padx=(5, 5))
+        self.lbl_ch_indicator.pack(side="right", padx=(2, 5))
 
-        # 3. 中间：文件路径 (填满剩余空间)
-        # width=1 是为了防止初始空路径把窗口撑得太宽
+        self.lbl_z_indicator = ttk.Label(f_row, text="", style="White.TLabel")
+        self.lbl_z_indicator.pack(side="right", padx=(2, 2))
+
         self.lbl_dual_path = ttk.Label(f_row, text="...", foreground="gray", anchor="w", style="White.TLabel", width=1)
         self.lbl_dual_path.pack(side="left", padx=5, fill="x", expand=True)
 
-        # --- Row 2: Mixed Stacks Settings ---
-        f_inter = ttk.Frame(self.tab_dual, style="White.TFrame")
-        f_inter.pack(fill="x", pady=(2, 0))
+        # --- Row 2: Interleaved & Channels (Z-Proj 移走了) ---
+        f_opts = ttk.Frame(self.tab_dual, style="White.TFrame")
+        f_opts.pack(fill="x", pady=(2, 0))
         
-        self.chk_inter = ttk.Checkbutton(f_inter, variable=self.is_interleaved_var, style="Toggle.TButton")
+        # Interleaved Checkbox
+        self.chk_inter = ttk.Checkbutton(f_opts, variable=self.is_interleaved_var, style="Toggle.TButton")
         self.chk_inter.pack(side="left")
         self.ui_elements["chk_interleaved"] = self.chk_inter
         
-        # [关键修复] 只创建一个 Label 并赋值给 self.lbl_ch_count，方便后续变灰
-        self.lbl_ch_count = ttk.Label(f_inter, text="Ch Count:", style="White.TLabel")
+        # Channel Count
+        self.lbl_ch_count = ttk.Label(f_opts, text="Ch Count:", style="White.TLabel")
         self.lbl_ch_count.pack(side="left", padx=(10, 2))
         
         self.var_n_channels = tk.IntVar(value=2)
-        self.sp_channels = ttk.Spinbox(f_inter, from_=1, to=20, textvariable=self.var_n_channels, width=3)
+        self.sp_channels = ttk.Spinbox(f_opts, from_=1, to=20, textvariable=self.var_n_channels, width=3)
         self.sp_channels.pack(side="left")
 
-        # === Tab 2: Separate Files (分别导入) ===
+        # === Tab 2 & 3 (保持不变) ===
         self.tab_sep = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
         self.nb_import.add(self.tab_sep, text=" Separate Files ") 
         self.ui_elements["tab_sep"] = lambda text: self.nb_import.tab(1, text=text) 
-        
         self.create_compact_file_row(self.tab_sep, "btn_c1", self.select_c1, "lbl_c1_path")
         self.create_compact_file_row(self.tab_sep, "btn_c2", self.select_c2, "lbl_c2_path")
         
-        # === Tab 3: Project (工程管理) ===
         self.tab_proj = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
         self.nb_import.add(self.tab_proj, text=" Project ")
-        
         f_proj_btns = ttk.Frame(self.tab_proj, style="White.TFrame")
         f_proj_btns.pack(fill="both", expand=True, pady=5, padx=5)
-        
         self.btn_load_proj = ttk.Button(f_proj_btns, text="📂 Load Project (.ria)", command=self.load_project_dialog)
         self.btn_load_proj.pack(side="left", fill="x", expand=True, padx=(0, 5))
-        
         self.btn_save_proj = ttk.Button(f_proj_btns, text="💾 Save Current (.ria)", command=self.save_project_dialog)
         self.btn_save_proj.pack(side="right", fill="x", expand=True, padx=(5, 0))
         
@@ -621,14 +594,36 @@ class RatioAnalyzerApp:
         f_actions = ttk.Frame(self.grp_file, style="Card.TFrame")
         f_actions.pack(fill="x", pady=(10, 0))
         
-        self.btn_load = ttk.Button(f_actions, command=self.load_data, state="disabled")
-        self.btn_load.pack(side="left", fill="x", expand=True, padx=(0, 2))
+        # 1. Z-Projection 控件 (最左边)
+        self.lbl_z_proj = ttk.Label(f_actions, text="Z-Proj:", state="disabled", style="White.TLabel")
+        self.lbl_z_proj.pack(side="left", padx=(0, 2))
+        
+        self.z_proj_var = tk.StringVar(value="Ave (AIP)")
+        self.combo_z_proj = ttk.Combobox(f_actions, textvariable=self.z_proj_var, 
+                                         values=["Max (MIP)", "Ave (AIP)"], 
+                                         state="disabled", width=9, font=("Segoe UI", 8))
+        self.combo_z_proj.pack(side="left", padx=(0, 5))
+
+        # =========================================================
+        # [修改] 中间区域：Load 按钮 / 进度条 的容器
+        # =========================================================
+        # 创建一个容器 Frame，占满中间的空间
+        self.fr_load_container = ttk.Frame(f_actions, style="Card.TFrame")
+        self.fr_load_container.pack(side="left", fill="x", expand=True, padx=(0, 2))
+        
+        # A. 正常显示的按钮 (默认 pack)
+        self.btn_load = ttk.Button(self.fr_load_container, command=self.load_data, state="disabled", text="🚀 Load & Analyze")
+        self.btn_load.pack(fill="both", expand=True)
         self.ui_elements["btn_load"] = self.btn_load
 
-        self.btn_clear_data = ttk.Button(f_actions, text="🗑", width=8, command=self.clear_all_data, style="Gray.TButton")
+        # B. 加载时显示的进度条 (默认不 pack，隐藏状态)
+        # mode='indeterminate' 表示左右来回跑，因为读取文件时长不确定
+        self.pb_loading = ttk.Progressbar(self.fr_load_container, orient="horizontal", mode="determinate", maximum=100)
+        # =========================================================
+
+        # 3. 清除按钮 (最右边)
+        self.btn_clear_data = ttk.Button(f_actions, text="🗑", width=4, command=self.clear_all_data, style="Gray.TButton")
         self.btn_clear_data.pack(side="right", fill="y")
-
-
 
     def setup_preprocess_group(self):
         self.grp_pre = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
@@ -643,23 +638,42 @@ class RatioAnalyzerApp:
         self.ui_elements["btn_undo_align"] = self.btn_undo_align
         self.pb_align = ttk.Progressbar(self.grp_pre, orient="horizontal", mode="determinate")
 
+    # src/gui.py -> setup_calc_group (替换整个方法)
+
     def setup_calc_group(self):
         self.grp_calc = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
         self.grp_calc.pack(fill="x", pady=(0, 10))
         self.ui_elements["grp_calc"] = self.grp_calc
         
-        # --- Ratio Mode Selection ---
-        f_mode = ttk.Frame(self.grp_calc, style="White.TFrame"); f_mode.pack(fill="x", pady=(0, 5))
-        self.lbl_mode = ttk.Label(f_mode, style="White.TLabel"); self.lbl_mode.pack(side="left")
+        # --- Ratio Mode Selection & Reset Button ---
+        f_mode = ttk.Frame(self.grp_calc, style="White.TFrame")
+        f_mode.pack(fill="x", pady=(0, 5))
+        
+        # 1. 标签
+        self.lbl_mode = ttk.Label(f_mode, style="White.TLabel")
+        self.lbl_mode.pack(side="left")
         self.ui_elements["lbl_ratio_mode"] = self.lbl_mode
+        
+        # 2. [修改] 下拉框 (改为 pack side=left，留出右边给垃圾桶)
         self.ratio_mode_var = tk.StringVar(value="c1_c2") 
-        self.combo_mode = ttk.Combobox(f_mode, state="readonly", width=18)
-        self.combo_mode.pack(side="right", fill="x", expand=True, padx=(5, 0))
+        self.combo_mode = ttk.Combobox(f_mode, state="readonly")
+        # padx=(5, 2) 给右边的按钮留一点空隙
+        self.combo_mode.pack(side="left", fill="x", expand=True, padx=(5, 2))
         self.combo_mode.bind("<<ComboboxSelected>>", self.on_mode_change)
         
+        # 3. [新增] 清除按钮 (垃圾桶)
+        self.btn_reset_calc = ttk.Button(f_mode, text="🗑", width=4, 
+                                         command=self.reset_calibration_params, 
+                                         style="Gray.TButton")
+        self.btn_reset_calc.pack(side="right")
+
         # --- Sliders Variables ---
-        self.var_int_thresh = tk.DoubleVar(value=0.0); self.var_ratio_thresh = tk.DoubleVar(value=0.0)
-        self.var_smooth = tk.DoubleVar(value=0.0); self.var_bg = tk.DoubleVar(value=5.0)
+        self.var_int_thresh = tk.DoubleVar(value=0.0)
+        self.var_ratio_thresh = tk.DoubleVar(value=0.0)
+        self.var_smooth = tk.DoubleVar(value=0.0)
+        
+        # 默认背景值 0.0
+        self.var_bg = tk.DoubleVar(value=0.0)
         
         # --- Sliders Creation ---
         self.create_slider(self.grp_calc, "lbl_int_thr", 0, 500, 1, self.var_int_thresh)
@@ -667,17 +681,14 @@ class RatioAnalyzerApp:
         self.create_slider(self.grp_calc, "lbl_smooth", 0, 10, 1, self.var_smooth, True)
         self.create_bg_slider(self.grp_calc, "lbl_bg", 0, 50, self.var_bg)
         
-        # --- [MODIFIED] Background ROI Controls ---
+        # --- Background ROI Controls ---
         f_bg_tools = ttk.Frame(self.grp_calc, style="White.TFrame")
         f_bg_tools.pack(fill="x", pady=(5, 0))
         
-        # 按钮 1: 仅用于“定义”区域 (Action)
         self.btn_draw_bg = ttk.Button(f_bg_tools, text="✏️ Draw BG Region", 
                                       command=self.draw_bg_roi_action)
         self.btn_draw_bg.pack(side="left", fill="x", expand=True, padx=(0, 2))
         
-        # 按钮 2: 仅用于“切换”模式 (State Switch)
-        # 使用 Checkbutton + Toggle 样式，文字明确为 "Use ROI Mode"
         self.chk_custom_bg = ttk.Checkbutton(f_bg_tools, text="Use ROI BG Mode", 
                                              variable=self.use_custom_bg_var,
                                              command=self.toggle_bg_mode,
@@ -685,7 +696,6 @@ class RatioAnalyzerApp:
                                              state="disabled") 
         self.chk_custom_bg.pack(side="right", fill="x", padx=(2, 0))
         
-        # 数值显示标签
         self.lbl_bg_val = ttk.Label(self.grp_calc, text="ROI Val: None", 
                                     foreground="gray", style="White.TLabel", font=("Segoe UI", 8))
         self.lbl_bg_val.pack(fill="x", padx=2, pady=(2, 5))
@@ -697,23 +707,67 @@ class RatioAnalyzerApp:
                                        command=self.update_plot, 
                                        style="Toggle.TButton")
         self.chk_log.pack(fill="x", pady=2) 
-        self.ui_elements["chk_log"] = self.chk_log 
+        self.ui_elements["chk_log"] = self.chk_log
     
+
+
+
+    def reset_calibration_params(self):
+        """
+        重置 Calibration 面板的所有参数为默认值 (0)。
+        """
+        # 1. 重置变量值
+        self.var_int_thresh.set(0.0)
+        self.var_ratio_thresh.set(0.0)
+        self.var_smooth.set(0.0)
+        self.var_bg.set(0.0)
+        self.log_var.set(False) # 也可以选择重置 Log Scale
+
+        # 2. 如果开启了 ROI BG Mode，先关闭它
+        if self.use_custom_bg_var.get():
+            self.use_custom_bg_var.set(False)
+            self.toggle_bg_mode() # 这会处理 UI 状态的恢复
+
+        # 3. 手动刷新滑动条旁边的数值标签
+        # (因为直接 set 变量不会触发 command 回调，必须手动 config text)
+        if "val_lbl_int_thr" in self.ui_elements:
+            self.ui_elements["val_lbl_int_thr"].config(text="0.0")
+        
+        if "val_lbl_ratio_thr" in self.ui_elements:
+            self.ui_elements["val_lbl_ratio_thr"].config(text="0.0")
+            
+        if "val_lbl_smooth" in self.ui_elements:
+            self.ui_elements["val_lbl_smooth"].config(text="0")
+            
+        if hasattr(self, 'lbl_bg_value_display'):
+            self.lbl_bg_value_display.config(text="0")
+
+        # 4. 重新计算背景并刷新图像
+        self.recalc_background()
+        self.update_plot()
+
+
+
+
+
+
+
     def toggle_bg_mode(self):
         """
         切换背景模式：点击 'Use ROI Mode' 按钮时触发
         """
-        # 获取数值标签的引用
-        val_lbl = self.ui_elements.get("val_lbl_bg")
+        # [修复] 获取正确的数值标签引用
+        val_lbl = getattr(self, 'lbl_bg_value_display', None)
         
         if self.use_custom_bg_var.get():
             # === 进入 ROI 模式 (禁用滑块) ===
             self.bg_scale.state(['disabled'])
             
             # 1. 标题变灰
-            self.ui_elements["lbl_bg"].config(foreground="#CCCCCC")
+            if "lbl_bg" in self.ui_elements:
+                self.ui_elements["lbl_bg"].config(foreground="#CCCCCC")
             
-            # 2. [NEW] 数值变灰 (不再显示红色)
+            # 2. 数值变灰
             if val_lbl: val_lbl.config(foreground="#CCCCCC")
             
         else:
@@ -721,16 +775,17 @@ class RatioAnalyzerApp:
             self.bg_scale.state(['!disabled'])
             
             # 1. 标题恢复深色
-            self.ui_elements["lbl_bg"].config(foreground="#333333")
+            if "lbl_bg" in self.ui_elements:
+                self.ui_elements["lbl_bg"].config(foreground="#333333")
             
-            # 2. [NEW] 数值恢复红色 (强调色)
-            if val_lbl: val_lbl.config(foreground="red")
+            # 2. 数值恢复红色 (强调色)
+            if val_lbl: val_lbl.config(foreground="#007acc") # 或 red
             
         # 立即根据新模式刷新图像
         self.update_plot()
-            
-        # 2. 刷新图像 (原来的功能)
-        self.update_plot()
+
+
+
     def setup_view_group(self):
         self.grp_view = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
         self.grp_view.pack(fill="x", pady=(0, 10))
@@ -1001,23 +1056,31 @@ class RatioAnalyzerApp:
         self.ui_elements["chk_live"] = self.chk_live
         
         # Sub-Row C: Params
-        row_param = ttk.Frame(fr_roi, style="White.TFrame"); row_param.pack(fill="x", pady=(4, 0))
+        row_param = ttk.Frame(fr_roi, style="White.TFrame")
+        row_param.pack(fill="x", pady=(4, 0))
         
+        # 1. Interval
         self.lbl_int = ttk.Label(row_param, text="Imaging Interval (s):", style="White.TLabel")
         self.lbl_int.pack(side="left")
         self.ui_elements["lbl_interval"] = self.lbl_int
         self.var_interval = tk.StringVar(value="1.0")
         ttk.Entry(row_param, textvariable=self.var_interval, width=5).pack(side="left", padx=2)
         
+        # 2. Unit
         self.lbl_unit = ttk.Label(row_param, text="Plotting Unit:", style="White.TLabel")
         self.lbl_unit.pack(side="left", padx=(5, 0))
         self.ui_elements["lbl_unit"] = self.lbl_unit
         self.combo_unit = ttk.Combobox(row_param, values=["s", "m", "h"], width=3, state="readonly")
         self.combo_unit.current(0); self.combo_unit.pack(side="left", padx=2)
 
+        # 3. [修改] Normalization 按钮化
         self.norm_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(row_param, text="Normalization (ΔR/R₀)", variable=self.norm_var, style="White.TCheckbutton").pack(side="right")
-        
+        # 原来是 style="White.TCheckbutton" -> 改为 style="Toggle.TButton"
+        self.chk_norm = ttk.Checkbutton(row_param, 
+                                        text="Normal. (ΔR/R₀)", 
+                                        variable=self.norm_var, 
+                                        style="Toggle.TButton")
+        self.chk_norm.pack(side="right", padx=2)
         # --- Col 1: Data Export ---
         fr_exp = ttk.LabelFrame(grid_area, padding=5, style="Card.TLabelframe")
         fr_exp.grid(row=0, column=1, sticky="nsew", padx=(0, 5))
@@ -1195,64 +1258,117 @@ class RatioAnalyzerApp:
         self.root.wait_window(dialog)
         return selection
 
-    def load_data(self):
+    # src/gui.py
+
+   
+    
+    # 2. 修改线程方法 (修复 NameError)
+
+    def load_data(self, on_success=None, predefined_roles=None):
+        """
+        [多线程版本] 入口函数
+        :param on_success: (Callable) 数据加载成功后的回调函数，用于 Project 加载
+        """
+        current_tab = self.nb_import.index("current")
+        if current_tab == 0 and not self.dual_path: return
+        if current_tab == 1 and (not self.c1_path or not self.c2_path): return
+
+        # UI 切换
+        self.btn_load.pack_forget()
+        self.pb_loading.pack(fill="both", expand=True)
+        
+        self.pb_loading["value"] = 0
+        self.is_loading_data = True
+        self.root.after(50, self._simulate_progress)
+
+        self.root.update()
+
+        # 收集参数
+        params = {
+            "tab_idx": current_tab,
+            "dual_path": self.dual_path,
+            "c1_path": self.c1_path,
+            "c2_path": self.c2_path,
+            "is_interleaved": self.is_interleaved_var.get(),
+            "n_ch": self.var_n_channels.get() if self.is_interleaved_var.get() else 2,
+            "z_method": None,
+            "on_success_cb": on_success, # [关键] 存入 params 传给线程
+            "predefined_roles": predefined_roles
+        }
+
+        # 获取 Z-Projection 参数
+        if hasattr(self, 'combo_z_proj') and str(self.combo_z_proj['state']) != 'disabled':
+            val = self.z_proj_var.get()
+            if "Max" in val: params["z_method"] = "max"
+            elif "Ave" in val: params["z_method"] = "ave"
+
+        threading.Thread(target=self._load_data_thread, args=(params,), daemon=True).start()
+
+    def _load_data_thread(self, params):
+        """
+        后台线程：只做 I/O 和 数据读取，不操作 UI。
+        """
         try:
-            self.root.config(cursor="watch")
-            self.root.update()
-            
-            # 准备数据容器
             raw_channels = []
-            current_tab = self.nb_import.index("current")
             
-            # --- 分支 1: 单文件加载 ---
-            if current_tab == 0:
-                if not self.dual_path: 
-                    raise ValueError("No file selected.")
-
-                # 获取参数
-                n_ch = self.var_n_channels.get() if self.is_interleaved_var.get() else 2
-                is_interleaved = self.is_interleaved_var.get()
-                
-                # [核心修改] 调用 session 的方法，而不是本地方法
+            if params["tab_idx"] == 0:
+                # 单文件加载
                 raw_channels = self.session.load_channels_from_file(
-                    self.dual_path, 
-                    is_interleaved, 
-                    n_ch
+                    params["dual_path"], 
+                    params["is_interleaved"], 
+                    params["n_ch"],
+                    z_proj_method=params["z_method"]
                 )
-                
-                # UI 逻辑：更新徽章
-                count = len(raw_channels)
-                if count == 1:
-                    self.lbl_ch_indicator.config(text=f" 1 Ch (Int) ", style="BadgeGreen.TLabel")
-                else:
-                    self.lbl_ch_indicator.config(text=f" {count} Chs (Ratio) ", style="BadgeBlue.TLabel")
-
-            # --- 分支 2: 双文件加载 ---
-            elif current_tab == 1:
-                if not self.c1_path or not self.c2_path: 
-                    raise ValueError("Files not selected.")
-
-                # [核心修改] 调用 session 的方法
-                raw_channels = self.session.load_separate_channels(self.c1_path, self.c2_path)
+            elif params["tab_idx"] == 1:
+                # 双文件加载
+                raw_channels = self.session.load_separate_channels(
+                    params["c1_path"], 
+                    params["c2_path"]
+                )
             
-            # --- 接下来是分配逻辑 (Assign logic) ---
+            # 成功：取出回调函数，传递给 post_process
+            cb = params.get("on_success_cb") 
+            roles_pre = params.get("predefined_roles")
+            self.root.after(0, lambda: self._load_data_post_process(raw_channels, cb, roles_pre))
+
+        except Exception as e:
+            # 失败：通知主线程报错 (修复 NameError 隐患)
+            err_msg = str(e)
+            self.root.after(0, lambda: self._load_data_error(err_msg))
+
+    # src/gui.py
+
+    # [关键修改] 必须在括号里加上 predefined_roles=None，否则就会报 "but 4 were given"
+    def _load_data_post_process(self, raw_channels, on_success_cb=None, predefined_roles=None):
+        """
+        回到主线程：处理角色分配、绘图、恢复按钮状态。
+        """
+        self.is_loading_data = False
+        self.pb_loading["value"] = 100
+        self.root.update()
+
+        try:
+            # 1. 角色分配 (Ask Roles)
             roles = None 
             
-            if len(raw_channels) > 2:
-                # 只有这里需要 UI 弹窗介入
-                self.root.config(cursor="")
+            # [新增] 优先使用预定义角色 (工程文件加载时)
+            if predefined_roles is not None:
+                print("Using predefined channel roles from project.")
+                roles = predefined_roles
+
+            # 否则，如果是多通道且没有预定义，则询问用户
+            elif len(raw_channels) > 2:
+                self.root.config(cursor="") 
                 user_roles = self.ask_channel_roles(len(raw_channels))
                 roles = user_roles
-            
+                
             elif len(raw_channels) == 0:
                  raise ValueError(f"No channels loaded.")
 
-            # [核心修改] 将数据“塞”回 Model
+            # 2. Set Data
             self.session.set_data(raw_channels, roles)
             
-            # --- UI 后续刷新 (Post-load UI updates) ---
-            
-            # 1. 更新对齐按钮状态 (根据 Model 的数据状态)
+            # 3. UI Refresh
             if self.session.data2 is not None:
                 self.btn_align.config(state="normal", text=self.t("btn_align"), style="TButton")
                 self.ui_elements["lbl_ratio_thr"].config(foreground="black")
@@ -1260,29 +1376,91 @@ class RatioAnalyzerApp:
                 self.btn_align.config(state="disabled")
                 self.ui_elements["lbl_ratio_thr"].config(foreground="gray")
 
-            self.data1_raw = None # Model已重置，这里只需通过 property 访问确保一致
+            self.data1_raw = None
             self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
 
-            # 2. 重置视图和 Slider
             self.view_mode = "ratio"
             self.rebuild_channel_bar()
             
-            # 3. 初始化绘图
-            # 注意：通过 self.data1 访问 (实际上是访问 self.session.data1)
             self.frame_scale.configure(to=self.data1.shape[0]-1)
             self.var_frame.set(0); self.frame_scale.set(0)
             
+            count = len(raw_channels)
+            if count == 1: self.lbl_ch_indicator.config(text=f" 1 Ch (Int) ", style="BadgeGreen.TLabel")
+            else: self.lbl_ch_indicator.config(text=f" {count} Chs (Ratio) ", style="BadgeBlue.TLabel")
+
             h, w = self.data1.shape[1], self.data1.shape[2]
             self.plot_mgr.init_image((h, w), cmap="coolwarm")
             self.roi_mgr.connect(self.plot_mgr.ax)
             self.update_plot()
-            
+
+            # 4. 按钮反馈
+            self.pb_loading.pack_forget()
+            self.btn_load.config(text="✅ Data Loaded!", style="Success.TButton", cursor="")
+            self.btn_load.pack(fill="both", expand=True) 
+            self.root.after(2000, self._reset_load_button)
+
+            # =========================================================
+            # [关键] 执行工程恢复回调！
+            # =========================================================
+            if on_success_cb:
+                print("Executing Project Restore Callback...")
+                on_success_cb()
+
         except Exception as e:
-            messagebox.showerror("Error", str(e))
-            import traceback
-            traceback.print_exc()
-        finally:
-            self.root.config(cursor="")
+            self._load_data_error(str(e))
+
+
+
+    def _simulate_progress(self):
+        """
+        模拟进度条增长：让它看起来在动，但不会超过 90%。
+        只有当真实数据加载完成 (self.is_loading_data = False) 时才会停止。
+        """
+        if not getattr(self, 'is_loading_data', False):
+            return # 如果加载已经结束或出错，停止模拟
+
+        current_val = self.pb_loading["value"]
+        
+        # 逻辑：前期快，后期慢，卡在 90% 等待真实结束
+        if current_val < 30:
+            step = 2     # 前30%跑得快一点
+        elif current_val < 70:
+            step = 0.5   # 中间慢一点
+        elif current_val < 90:
+            step = 0.1   # 最后非常慢，给人一种“正在最后处理”的感觉
+        else:
+            step = 0     # 超过90%就停住不动，等待真实加载完成
+        
+        new_val = current_val + step
+        self.pb_loading["value"] = new_val
+        
+        # 每 30ms 刷新一次
+        self.root.after(30, self._simulate_progress)
+
+
+    
+
+    # [新增辅助方法 3] 主线程后处理 (失败)
+
+    def _load_data_error(self, error_msg):
+        # 停止进度条
+        self.pb_loading.stop()
+        self.pb_loading.pack_forget()
+        
+        # 恢复按钮
+        self.btn_load.pack(fill="both", expand=True)
+        self._reset_load_button()
+        
+        messagebox.showerror("Error", error_msg)
+        import traceback
+        traceback.print_exc()
+
+    # [新增辅助方法 4] 重置按钮
+    def _reset_load_button(self):
+        # 恢复文字和样式
+        self.btn_load.config(text="🚀 Load & Analyze", state="normal", style="TButton", cursor="")
+
 
     def check_ready(self):
         """
@@ -1326,9 +1504,27 @@ class RatioAnalyzerApp:
         self.lbl_c2_path.config(text=self.t("lbl_no_file"))
         self.lbl_dual_path.config(text=self.t("lbl_no_file"))
         
-        # [新增] 重置通道数标签
+        # 重置通道数徽章
         if hasattr(self, 'lbl_ch_indicator'):
             self.lbl_ch_indicator.config(text="", style="White.TLabel")
+
+        # =========================================================
+        # [核心修复] 重置 Z-Stack 相关的 UI
+        # =========================================================
+        if hasattr(self, 'lbl_z_indicator'):
+            # 1. 清除 Z-Stack 徽章文字 (修复 bug)
+            self.lbl_z_indicator.config(text="", style="White.TLabel")
+        
+        if hasattr(self, 'lbl_z_proj'):
+            # 2. 将 "Z-Proj:" 标签文字显式变灰
+            self.lbl_z_proj.config(state="disabled", foreground="#A0A0A0")
+            
+            # 3. 禁用下拉框 (系统会自动处理内部文字变灰，或者直接变不可点)
+            self.combo_z_proj.config(state="disabled")
+            
+            # (可选) 如果你想让里面的字彻底消失，可以取消注释下面这行：
+            # self.z_proj_var.set("") 
+        # =========================================================
         
         self.btn_load.config(state="disabled")
         self.btn_align.config(state="disabled", text=self.t("btn_align"), style="TButton")
@@ -1345,7 +1541,7 @@ class RatioAnalyzerApp:
         self.lbl_frame.config(text="0/0")
         self.pb_align.pack_forget()
 
-        # Clear all channels
+        # Clear all channels buttons
         for btn in self.channel_buttons:
             btn.destroy()
         self.channel_buttons = []
@@ -1416,13 +1612,21 @@ class RatioAnalyzerApp:
         lbl = ttk.Label(f, text="...", foreground="gray", anchor="w", style="White.TLabel"); lbl.pack(side="left", padx=5, fill="x", expand=True)
         setattr(self, lbl_attr, lbl)
 
+    # src/gui.py -> create_slider
+
     def create_slider(self, parent, label_key, min_v, max_v, step, variable, is_int=False):
         f = ttk.Frame(parent, style="White.TFrame"); f.pack(fill="x", pady=1)
         h = ttk.Frame(f, style="White.TFrame"); h.pack(fill="x")
         lbl = ttk.Label(h, style="White.TLabel"); lbl.pack(side="left") 
         self.ui_elements[label_key] = lbl
+        
+        # 数值显示标签
         val_lbl = ttk.Label(h, text=str(variable.get()), foreground="#007acc", font=self.f_bold, style="White.TLabel")
         val_lbl.pack(side="right", padx=(0, 10))
+        
+        # [关键新增] 注册这个标签，以便 load_project 时能找到并更新它
+        self.ui_elements[f"val_{label_key}"] = val_lbl 
+        
         def on_slide(v):
             val = float(v)
             if is_int: val = int(val)
@@ -1430,7 +1634,10 @@ class RatioAnalyzerApp:
             fmt = "{:.0f}" if is_int else "{:.1f}"
             val_lbl.config(text=fmt.format(val))
             if not self.is_playing: self.update_plot()
-        s = ttk.Scale(f, from_=min_v, to=max_v, command=on_slide); s.set(variable.get()); s.pack(fill="x")
+            
+        s = ttk.Scale(f, from_=min_v, to=max_v, command=on_slide)
+        s.set(variable.get())
+        s.pack(fill="x")
 
     def create_bg_slider(self, parent, label_key, min_v, max_v, variable):
         f = ttk.Frame(parent, style="White.TFrame"); f.pack(fill="x", pady=1)
@@ -1563,11 +1770,14 @@ class RatioAnalyzerApp:
         int_th = self.var_int_thresh.get()
         ratio_th = self.var_ratio_thresh.get()
         
-        # 只有当 Smooth > 0 时才传值，且转为 int
         sm_val = int(self.var_smooth.get())
         
         is_log = self.log_var.get()
         use_custom_bg = self.use_custom_bg_var.get()
+
+        # [新增] 检查是否需要交换通道
+        # 如果下拉框选的是 "c2_c1"，则需要交换
+        need_swap = (self.ratio_mode_var.get() == "c2_c1")
 
         # 2. 委托给 Model 计算
         return self.session.get_processed_frame(
@@ -1576,9 +1786,9 @@ class RatioAnalyzerApp:
             ratio_thresh=ratio_th,
             smooth_size=sm_val,
             log_scale=is_log,
-            use_custom_bg=use_custom_bg
+            use_custom_bg=use_custom_bg,
+            swap_channels=need_swap # [传参]
         )
-
 
     def toggle_scale_mode(self):
         if self.lock_var.get():
@@ -1860,7 +2070,10 @@ class RatioAnalyzerApp:
                 "path_c1": self.c1_path,
                 "path_c2": self.c2_path,
                 "is_interleaved": self.is_interleaved_var.get(),
-                "n_channels": self.var_n_channels.get()
+                "n_channels": self.var_n_channels.get(),
+                # [新增] 保存 Z-Projection 设置
+                "z_proj_method": self.z_proj_var.get() if str(self.combo_z_proj['state']) != 'disabled' else None,
+                "channel_roles": self.session.current_roles
             }
             
             # 2. 收集参数
@@ -1890,15 +2103,27 @@ class RatioAnalyzerApp:
             # 4. 收集 ROI
             rois = self.roi_mgr.get_all_rois_data()
             
-            # 5. 写入
+            # [新增] 序列化矩阵
+            # Numpy array 不能直接被 json dump，需要转成 list
+            matrices_json = []
+            if self.session.alignment_matrices:
+                matrices_json = [m.tolist() for m in self.session.alignment_matrices]
+
+            # 写入
             project_data = {
                 "version": self.VERSION,
                 "timestamp": str(datetime.datetime.now()),
                 "source": source_info,
                 "params": params,
                 "view": view_settings,
+                "alignment": {
+                    "is_aligned": (self.session.data1_raw is not None),
+                    "matrices": matrices_json
+                },
                 "rois": rois
+
             }
+
             
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(project_data, f, indent=4)
@@ -1913,6 +2138,7 @@ class RatioAnalyzerApp:
         if path:
             self.load_project_logic(path)
 
+
     def load_project_logic(self, filepath):
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
@@ -1923,84 +2149,154 @@ class RatioAnalyzerApp:
             view = data.get("view", {})
             rois = data.get("rois", [])
             
-            # 1. 恢复文件路径并加载数据
-            # 先清空当前数据
+            # --- 阶段 1: 恢复 UI 状态以便 load_data 读取 ---
             self.clear_all_data()
             
             mode = src.get("mode", "single")
-            
             if mode == "single":
                 p = src.get("path_dual")
                 if not p or not os.path.exists(p):
                     messagebox.showerror("Error", f"Original source file not found:\n{p}")
                     return
-                # 恢复 UI 状态
-                self.nb_import.select(0) # 切到 Single Tab
+                self.nb_import.select(0)
                 self.dual_path = p
                 self.lbl_dual_path.config(text=os.path.basename(p))
                 self.is_interleaved_var.set(src.get("is_interleaved", False))
                 self.var_n_channels.set(src.get("n_channels", 2))
+                
+                # 恢复 Z-Projection 设置
+                z_method = src.get("z_proj_method")
+                if z_method:
+                    self.lbl_z_proj.config(state="normal")
+                    self.combo_z_proj.config(state="readonly")
+                    self.z_proj_var.set(z_method)
+                
             else:
                 p1 = src.get("path_c1")
                 p2 = src.get("path_c2")
                 if not p1 or not os.path.exists(p1) or not p2 or not os.path.exists(p2):
                     messagebox.showerror("Error", "Original source files not found.")
                     return
-                # 恢复 UI 状态
-                self.nb_import.select(1) # 切到 Separate Tab
+                self.nb_import.select(1)
                 self.c1_path = p1; self.lbl_c1_path.config(text=os.path.basename(p1))
                 self.c2_path = p2; self.lbl_c2_path.config(text=os.path.basename(p2))
             
-            # 触发加载 (核心!)
             self.check_ready()
-            self.load_data() # 这会读取图像、计算默认背景等
-            
-            # 2. 恢复参数 (在 load_data 之后覆盖默认值)
-            self.var_int_thresh.set(params.get("int_thresh", 0))
-            self.var_ratio_thresh.set(params.get("ratio_thresh", 0))
-            self.var_smooth.set(params.get("smooth", 0))
-            self.var_bg.set(params.get("bg_percent", 5.0))
-            self.log_var.set(params.get("log_scale", False))
-            
-            # 恢复自定义背景
-            if params.get("use_custom_bg", False):
-                self.custom_bg1 = params.get("custom_bg1", 0)
-                self.custom_bg2 = params.get("custom_bg2", 0)
-                self.use_custom_bg_var.set(True)
-                # 更新 UI 状态
-                self.toggle_bg_mode() 
-                self.lbl_bg_val.config(text=f"ROI Val: {self.custom_bg1:.1f} / {self.custom_bg2:.1f}")
-            
-            # 3. 恢复视图设置
-            self.ratio_mode_var.set(view.get("ratio_mode", "c1_c2"))
-            self.update_mode_options() # 刷新下拉框文字
-            
-            self.cmap_var.set(view.get("cmap", "coolwarm"))
-            self.bg_color_var.set(view.get("bg_color", "Trans"))
-            
-            if view.get("lock_range", False):
-                self.lock_var.set(True)
-                self.entry_vmin.config(state="normal"); self.entry_vmin.delete(0, tk.END); self.entry_vmin.insert(0, view.get("vmin", "0.0"))
-                self.entry_vmax.config(state="normal"); self.entry_vmax.delete(0, tk.END); self.entry_vmax.insert(0, view.get("vmax", "1.0"))
-                self.toggle_scale_mode() # 触发 UI 锁定
-            
-            # 4. 恢复 ROI
-            self.roi_mgr.restore_rois_from_data(rois)
-            
-            # 5. 恢复 View Mode (Ratio/Ch1...)
-            saved_view_mode = view.get("view_mode", "ratio")
-            self.set_view_mode(saved_view_mode) 
-            
-            # 强制刷新一次全图
-            self.update_plot()
-            self.update_cmap()
-            
-            messagebox.showinfo("Success", "Project loaded successfully!")
+
+            saved_roles = src.get("channel_roles", None)
+
+            # --- 定义阶段 2: 数据加载成功后的回调 ---
+            # --- Define Phase 2: Callback after data loading is complete ---
+            def restore_settings_and_rois():
+                print("Restoring Project Params & ROIs...")
+                
+                try:
+                    # 1. Restore Parameters (Thresholds, Smooth, Log)
+                    i_val = params.get("int_thresh", 0)
+                    r_val = params.get("ratio_thresh", 0)
+                    s_val = params.get("smooth", 0)
+                    
+                    self.var_int_thresh.set(i_val)
+                    self.var_ratio_thresh.set(r_val)
+                    self.var_smooth.set(s_val)
+                    self.log_var.set(params.get("log_scale", False))
+                    
+                    # [Fix] Manually update the numeric labels for sliders
+                    # Check if UI elements exist to avoid errors
+                    if "val_lbl_int_thr" in self.ui_elements:
+                        self.ui_elements["val_lbl_int_thr"].config(text=f"{i_val:.1f}")
+                    
+                    if "val_lbl_ratio_thr" in self.ui_elements:
+                        self.ui_elements["val_lbl_ratio_thr"].config(text=f"{r_val:.1f}")
+                        
+                    if "val_lbl_smooth" in self.ui_elements:
+                        self.ui_elements["val_lbl_smooth"].config(text=f"{int(s_val)}")
+
+                    # 2. Restore Background Settings
+                    bg_pct = params.get("bg_percent", 5.0)
+                    self.var_bg.set(bg_pct)
+                    
+                    # Update the label next to the BG slider
+                    if hasattr(self, 'lbl_bg_value_display'):
+                        self.lbl_bg_value_display.config(text=f"{int(bg_pct)}")
+                    
+                    # Force recalculate background (setting variable doesn't trigger calculation)
+                    self.recalc_background()
+                    
+                    # 3. Restore Custom Background Mode
+                    if params.get("use_custom_bg", False):
+                        self.custom_bg1 = params.get("custom_bg1", 0.0)
+                        self.custom_bg2 = params.get("custom_bg2", 0.0)
+                        self.use_custom_bg_var.set(True)
+                        self.toggle_bg_mode() # Refresh UI state
+                        self.lbl_bg_val.config(text=f"ROI Val: {self.custom_bg1:.1f} / {self.custom_bg2:.1f}")
+                    else:
+                        # Explicitly disable to prevent residual state
+                        self.use_custom_bg_var.set(False)
+                        self.toggle_bg_mode()
+                    
+                    # 4. Restore View Settings (Ratio Mode, Colormap, Lock Range)
+                    saved_ratio_mode = view.get("ratio_mode", "c1_c2")
+                    self.ratio_mode_var.set(saved_ratio_mode)
+                    self.update_mode_options()
+                    
+                    self.cmap_var.set(view.get("cmap", "coolwarm"))
+                    self.bg_color_var.set(view.get("bg_color", "Trans"))
+                    
+                    if view.get("lock_range", False):
+                        self.lock_var.set(True)
+                        self.entry_vmin.config(state="normal")
+                        self.entry_vmin.delete(0, tk.END); self.entry_vmin.insert(0, view.get("vmin", "0.0"))
+                        self.entry_vmax.config(state="normal")
+                        self.entry_vmax.delete(0, tk.END); self.entry_vmax.insert(0, view.get("vmax", "1.0"))
+                        self.toggle_scale_mode()
+                    else:
+                        self.lock_var.set(False)
+                        self.toggle_scale_mode()
+
+                    # =====================================================
+                    # Apply saved transformation matrices
+                    # =====================================================
+                    # Note: 'data' variable comes from outer load_project_logic scope
+                    alignment_data = data.get("alignment", {})
+                    matrices = alignment_data.get("matrices", [])
+                    
+                    if matrices:
+                        print(f"Applying {len(matrices)} saved alignment matrices...")
+                        # Directly call Model to apply matrices (fast, no threading needed)
+                        self.session.apply_existing_alignment(matrices)
+                        
+                        # Update UI buttons to "Done" state
+                        self.btn_align.config(state="normal", text=self.t("btn_align_done"), style="Success.TButton")
+                        self.btn_undo_align.config(state="normal", text=self.t("btn_undo_align"), style="Gray.TButton")
+                    # =====================================================
+
+                    # 5. Restore ROIs (Image data is ready now, masks generate correctly)
+                    self.roi_mgr.restore_rois_from_data(rois)
+                    
+                    # 6. Final Refresh
+                    saved_view_mode = view.get("view_mode", "ratio")
+                    self.set_view_mode(saved_view_mode) 
+                    self.update_plot()
+                    self.update_cmap()
+                    
+                    messagebox.showinfo("Success", "Project loaded successfully!")
+                    
+                except Exception as e:
+                    print(f"Restore Error: {e}")
+                    import traceback
+                    traceback.print_exc()
+
+
+
+            # --- 触发异步加载 ---
+            self.load_data(on_success=restore_settings_and_rois, predefined_roles=saved_roles)
 
         except Exception as e:
             messagebox.showerror("Load Error", f"Failed to load project:\n{str(e)}")
             import traceback
             traceback.print_exc()
+
 
     def show_shortcuts_window(self):
         """显示快捷键列表弹窗"""

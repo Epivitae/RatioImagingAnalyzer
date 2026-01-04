@@ -98,42 +98,51 @@ def process_frame_ratio(d1_frame, d2_frame, bg1, bg2, int_thresh, ratio_thresh, 
 
 def align_stack_ecc(data1, data2, progress_callback=None):
     """
-    图像配准 (ECC)。
+    [修改] 返回值增加了 matrices 列表
+    Returns: (aligned_1, aligned_2, matrices_list)
     """
-    if cv2 is None:
-        raise ImportError("Missing Dependency: Please install 'opencv-python' to run Alignment.")
+    if cv2 is None: raise ImportError("OpenCV required.")
 
     frames, h, w = data1.shape
     
+    # 简单的参考帧选择逻辑
     mean1 = np.nanmean(data1)
     mean2 = np.nanmean(data2)
-    
-    if mean1 >= mean2:
-        is_c1_ref = True; stack_ref = data1; stack_move = data2
-    else:
-        is_c1_ref = False; stack_ref = data2; stack_move = data1
+    is_c1_ref = (mean1 >= mean2)
+    stack_ref = data1 if is_c1_ref else data2
+    stack_move = data2 if is_c1_ref else data1
 
     aligned_ref = np.zeros((frames, h, w), dtype=np.float32)
     aligned_move = np.zeros((frames, h, w), dtype=np.float32)
     
-    template = stack_ref[0].astype(np.float32)
-    template = np.nan_to_num(template, nan=0.0)
-
+    template = np.nan_to_num(stack_ref[0].astype(np.float32), nan=0.0)
     aligned_ref[0] = template
     aligned_move[0] = stack_move[0].astype(np.float32)
 
+    # 存储矩阵
+    # 格式：List of 2x3 numpy arrays
+    matrices = []
+    
+    # 第0帧是单位矩阵 (无位移)
+    eye_matrix = np.eye(2, 3, dtype=np.float32)
+    matrices.append(eye_matrix)
+
     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 50, 1e-5)
-    motion_mode = cv2.MOTION_TRANSLATION
+    motion_mode = cv2.MOTION_TRANSLATION # 或者 MOTION_EUCLIDEAN
+    
+    # 当前的变换矩阵 (累积)
     warp_matrix = np.eye(2, 3, dtype=np.float32)
 
     for i in range(1, frames):
-        current_img = stack_ref[i].astype(np.float32)
-        current_img = np.nan_to_num(current_img, nan=0.0)
+        current_img = np.nan_to_num(stack_ref[i].astype(np.float32), nan=0.0)
 
         try:
+            # 计算矩阵
             (_, warp_matrix) = cv2.findTransformECC(
                 template, current_img, warp_matrix, motion_mode, criteria, None, 5
             )
+            
+            # 应用矩阵
             aligned_ref[i] = cv2.warpAffine(
                 stack_ref[i].astype(np.float32), warp_matrix, (w, h), 
                 flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP,
@@ -144,17 +153,61 @@ def align_stack_ecc(data1, data2, progress_callback=None):
                 flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP,
                 borderMode=cv2.BORDER_CONSTANT, borderValue=np.nan
             )
+            
+            # 保存该帧的矩阵 (深拷贝)
+            matrices.append(warp_matrix.copy())
+
         except cv2.error:
+            # 配准失败，使用上一帧的矩阵或单位矩阵
+            # 这里简单处理：不做变换
             aligned_ref[i] = stack_ref[i].astype(np.float32)
             aligned_move[i] = stack_move[i].astype(np.float32)
+            matrices.append(np.eye(2, 3, dtype=np.float32)) # 记录无位移
 
         if progress_callback: progress_callback(i, frames)
 
-    if is_c1_ref: return aligned_ref, aligned_move
-    else: return aligned_move, aligned_ref
+    # 返回结果：根据谁是参考帧，决定返回顺序
+    # 重要：我们也需要保存“谁是参考帧”的信息，但为了简化，我们假设矩阵是用于 warp_inverse 的
+    if is_c1_ref: 
+        return aligned_ref, aligned_move, matrices
+    else: 
+        return aligned_move, aligned_ref, matrices
 
 
-# src/processing.py (追加在文件末尾)
+
+
+
+def apply_alignment_matrices(data, matrices):
+    """
+    [新增] 快速应用已知的矩阵列表
+    """
+    if cv2 is None: raise ImportError("OpenCV required.")
+    if data is None: return None
+    
+    frames, h, w = data.shape
+    aligned = np.zeros_like(data, dtype=np.float32)
+    
+    # 确保矩阵数量匹配
+    count = min(frames, len(matrices))
+    
+    for i in range(count):
+        mat = matrices[i]
+        src = data[i].astype(np.float32)
+        
+        # 检查是否是单位矩阵 (无需变换)
+        if np.allclose(mat, np.eye(2, 3, dtype=np.float32)):
+            aligned[i] = src
+        else:
+            aligned[i] = cv2.warpAffine(
+                src, mat, (w, h),
+                flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP,
+                borderMode=cv2.BORDER_CONSTANT, borderValue=np.nan
+            )
+            
+    return aligned
+
+
+
 
 def extract_kymograph(stack, p1, p2):
     """
