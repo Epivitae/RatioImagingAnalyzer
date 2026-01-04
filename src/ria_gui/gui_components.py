@@ -45,10 +45,13 @@ class PlotManager:
 
         self.fig = plt.Figure(figsize=(5, 5), dpi=100)
         self.fig.patch.set_facecolor('#FFFFFF')
-        
+        self.toolbar_container = ttk.Frame(self.parent, style="White.TFrame")
+        self.toolbar_container.pack(side="top", fill="x", pady=(0, 0)) # 紧贴顶部
+
+
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.parent)
         self.canvas_widget = self.canvas.get_tk_widget()
-        self.canvas_widget.pack(fill="both", expand=True)
+        self.canvas_widget.pack(side="top", fill="both", expand=True) # side="top" 确保在下方
         
         self.ax = self.fig.add_subplot(111)
         self.ax.axis('off')
@@ -100,25 +103,26 @@ class PlotManager:
 
 
 
-    def add_toolbar(self, parent_frame):
-        # ... (前两行不变) ...
-        for child in parent_frame.winfo_children():
+    def add_toolbar(self, parent_frame=None): # parent_frame 参数变为可选，兼容旧代码防止报错
+        # 如果外部没传 parent (我们在 gui.py 里改成不传了)，就用内部创建的顶部容器
+        target_frame = parent_frame if parent_frame else self.toolbar_container
+
+        # 清理旧内容
+        for child in target_frame.winfo_children():
             child.destroy()
             
-        self.toolbar = NavigationToolbar2Tk(self.canvas, parent_frame)
+        self.toolbar = NavigationToolbar2Tk(self.canvas, target_frame)
         
-        # [修改] 初始加载时应用当前主题颜色
+        # 样式配置 (保持不变)
         try:
-            # 获取当前主题颜色
             mode = self.app.current_theme
             c = self.app.THEME_COLORS[mode]
-            bg_color = c.get("toolbar_bg", "#F0F0F0") # 使用专门定义的 toolbar_bg
-            fg_color = c["plot_fg"]
+            bg_color = c.get("toolbar_bg", "#F0F0F0") 
             
-            self.toolbar.config(background=bg_color)
-            self.toolbar._message_label.config(background=bg_color, foreground="black") # 消息文字始终黑
+            # 强制去掉 Matplotlib 工具栏自带的边框，使其更融合
+            self.toolbar.config(background=bg_color, highlightthickness=0, bd=0)
+            self.toolbar._message_label.config(background=bg_color, foreground="black")
         except:
-            # 降级处理
             self.toolbar.config(background="#F0F0F0")
             
         self.toolbar.update()

@@ -96,55 +96,197 @@ class KymographWindow:
         
         self.apply_theme()
 
+
     def _setup_controls(self, parent):
-        # ... (这部分代码保持不变，省略以节省篇幅) ...
-        # Group 1: Calibration
-        fr_calib = ttk.LabelFrame(parent, text="📏 Calibration", padding=5, style="Card.TLabelframe")
-        fr_calib.pack(side="left", fill="both", expand=True, padx=2)
+        # 初始化变量
+        if not hasattr(self, 'var_plot_font_size'): self.var_plot_font_size = tk.IntVar(value=10)
+        if not hasattr(self, 'var_dist_start'): self.var_dist_start = tk.IntVar(value=0)
+        if not hasattr(self, 'var_dist_end'): self.var_dist_end = tk.IntVar(value=0)
+
+        P_OPTS = {'side': 'left', 'fill': 'both', 'expand': True, 'padx': 2}
         
-        f1 = ttk.Frame(fr_calib, style="Card.TFrame"); f1.pack(fill="x")
-        ttk.Label(f1, text="Dist:", width=5).pack(side="left")
+        # =========================================================
+        # Module 1: Calibration
+        # =========================================================
+        fr_calib = ttk.LabelFrame(parent, text="📏 Calib", padding=5, style="Card.TLabelframe")
+        fr_calib.pack(**P_OPTS)
+        
+        f1 = ttk.Frame(fr_calib, style="Card.TFrame"); f1.pack(fill="x", pady=(0, 2))
+        ttk.Label(f1, text="Dist:", width=4, style="White.TLabel").pack(side="left")
         ttk.Entry(f1, textvariable=self.var_um_px, width=5).pack(side="left")
-        ttk.Label(f1, text="um/px").pack(side="left")
+        ttk.Label(f1, text="µm", style="White.TLabel").pack(side="left", padx=(2,0))
         
-        f2 = ttk.Frame(fr_calib, style="Card.TFrame"); f2.pack(fill="x", pady=2)
-        ttk.Label(f2, text="Time:", width=5).pack(side="left")
+        f2 = ttk.Frame(fr_calib, style="Card.TFrame"); f2.pack(fill="x")
+        ttk.Label(f2, text="Time:", width=4, style="White.TLabel").pack(side="left")
         ttk.Entry(f2, textvariable=self.var_s_frame, width=5).pack(side="left")
-        ttk.Label(f2, text="s/frame").pack(side="left")
+        ttk.Label(f2, text="s", style="White.TLabel").pack(side="left", padx=(2,0))
         
         parent.bind_all("<Return>", lambda e: self.refresh_plot())
 
-        # Group 2: Range
-        fr_range = ttk.LabelFrame(parent, text="🔍 Time Range (Frames)", padding=5, style="Card.TLabelframe")
-        fr_range.pack(side="left", fill="both", expand=True, padx=2)
+        # =========================================================
+        # Module 2: Range (布局优化：左边输入框，右边居中按钮)
+        # =========================================================
+        fr_range = ttk.LabelFrame(parent, text="🔍 Range", padding=5, style="Card.TLabelframe")
+        fr_range.pack(**P_OPTS)
         
+        # Top: Auto Toggle
         self.chk_auto = ttk.Checkbutton(fr_range, text="Auto / Full", variable=self.var_auto_range, 
-                                        command=self._toggle_range_inputs, style="White.TCheckbutton")
-        self.chk_auto.pack(anchor="w")
+                                        command=self._toggle_range_inputs, style="Toggle.TButton")
+        self.chk_auto.pack(fill="x", pady=(0, 5))
         
-        f_rng = ttk.Frame(fr_range, style="Card.TFrame")
-        f_rng.pack(fill="x")
-        self.ent_start = ttk.Entry(f_rng, textvariable=self.var_frame_start, width=5)
-        self.ent_start.pack(side="left")
-        ttk.Label(f_rng, text="-").pack(side="left")
-        self.ent_end = ttk.Entry(f_rng, textvariable=self.var_frame_end, width=5)
-        self.ent_end.pack(side="left")
-        
-        ttk.Button(fr_range, text="Apply", command=self.refresh_plot, width=6, style="Compact.TButton").pack(side="right", padx=2)
+        # Main Container: Left (Inputs) + Right (Button)
+        f_main = ttk.Frame(fr_range, style="Card.TFrame")
+        f_main.pack(fill="both", expand=True)
 
-        # Group 3: Appearance
-        fr_look = ttk.LabelFrame(parent, text="🎨 Appearance", padding=5, style="Card.TLabelframe")
-        fr_look.pack(side="left", fill="both", expand=True, padx=2)
+        # -- Left Column: Y and X Inputs --
+        f_inputs = ttk.Frame(f_main, style="Card.TFrame")
+        f_inputs.pack(side="left")
+
+        # Y Row
+        f_y = ttk.Frame(f_inputs, style="Card.TFrame"); f_y.pack(fill="x", pady=(0, 4)) # 稍微增加一点行间距
+        ttk.Label(f_y, text="Y:", width=2, style="White.TLabel").pack(side="left")
+        self.ent_start = ttk.Entry(f_y, textvariable=self.var_frame_start, width=4)
+        self.ent_start.pack(side="left")
+        ttk.Label(f_y, text="-", style="White.TLabel").pack(side="left")
+        self.ent_end = ttk.Entry(f_y, textvariable=self.var_frame_end, width=4)
+        self.ent_end.pack(side="left")
+
+        # X Row
+        f_x = ttk.Frame(f_inputs, style="Card.TFrame"); f_x.pack(fill="x")
+        ttk.Label(f_x, text="X:", width=2, style="White.TLabel").pack(side="left")
+        self.ent_dist_start = ttk.Entry(f_x, textvariable=self.var_dist_start, width=4)
+        self.ent_dist_start.pack(side="left")
+        ttk.Label(f_x, text="-", style="White.TLabel").pack(side="left")
+        self.ent_dist_end = ttk.Entry(f_x, textvariable=self.var_dist_end, width=4)
+        self.ent_dist_end.pack(side="left")
         
+        # -- Right Column: Go Button (Vertically Centered) --
+        # anchor="center" 让按钮在垂直方向居中
+        ttk.Button(f_main, text="Go", command=self.refresh_plot, width=3, style="Compact.TButton")\
+            .pack(side="left", padx=(6, 0), anchor="center")
+
+        # =========================================================
+        # Module 3: View
+        # =========================================================
+        fr_look = ttk.LabelFrame(parent, text="🎨 View", padding=5, style="Card.TLabelframe")
+        fr_look.pack(**P_OPTS)
+        ttk.Checkbutton(fr_look, text="Log Scale", variable=self.var_log, 
+                        command=self.refresh_plot, style="Toggle.TButton").pack(fill="x", pady=(0, 5))
         cmap_opts = ["jet", "coolwarm", "viridis", "magma", "gray", "inferno"]
-        ttk.OptionMenu(fr_look, self.var_cmap, self.var_cmap.get(), *cmap_opts, command=lambda _: self.refresh_plot()).pack(fill="x", pady=2)
-        ttk.Checkbutton(fr_look, text="Log Scale", variable=self.var_log, command=self.refresh_plot, style="White.TCheckbutton").pack(anchor="w")
+        self.combo_cmap = ttk.Combobox(fr_look, textvariable=self.var_cmap, values=cmap_opts, 
+                                       state="readonly", justify="center")
+        self.combo_cmap.bind("<<ComboboxSelected>>", lambda e: self.refresh_plot())
+        self.combo_cmap.pack(fill="x")
+
+        # =========================================================
+        # Module 4: Font
+        # =========================================================
+        fr_font = ttk.LabelFrame(parent, text="Aᴀ Font", padding=5, style="Card.TLabelframe")
+        fr_font.pack(**P_OPTS)
+
+        def change_font(delta):
+            v = self.var_plot_font_size.get() + delta
+            if v < 6: v = 6
+            if v > 30: v = 30
+            self.var_plot_font_size.set(v)
+            self.refresh_plot()
+
+        f_val = ttk.Frame(fr_font, style="Card.TFrame"); f_val.pack(fill="x", pady=(0, 5))
+        ttk.Label(f_val, text="Size:", style="White.TLabel").pack(side="left", padx=(2,0))
+        self.lbl_font_val = ttk.Label(f_val, textvariable=self.var_plot_font_size, 
+                                      font=("Segoe UI", 9, "bold"), foreground="#0056b3", style="White.TLabel")
+        self.lbl_font_val.pack(side="right", padx=(0,5))
+
+        f_btns = ttk.Frame(fr_font, style="Card.TFrame"); f_btns.pack(fill="x")
+        ttk.Button(f_btns, text="A-", width=4, command=lambda: change_font(-1), style="Compact.TButton").pack(side="left", fill="x", expand=True, padx=(0, 1))
+        ttk.Button(f_btns, text="A+", width=4, command=lambda: change_font(1), style="Compact.TButton").pack(side="left", fill="x", expand=True, padx=(1, 0))
 
     def _toggle_range_inputs(self):
+        # [修改] 同时控制 Y轴 和 X轴 输入框的开关
         state = "disabled" if self.var_auto_range.get() else "normal"
         self.ent_start.config(state=state)
         self.ent_end.config(state=state)
+        
+        if hasattr(self, 'ent_dist_start'):
+            self.ent_dist_start.config(state=state)
+            self.ent_dist_end.config(state=state)
+            
         self.refresh_plot()
+
+    def refresh_plot(self):
+        if not self.is_open or self.raw_data is None: return
+        data = self.raw_data
+        h, w = data.shape 
+        
+        # [核心逻辑] Auto 模式下，自动重置 X 和 Y 的变量为最大范围
+        if self.var_auto_range.get():
+            self.var_frame_start.set(0)
+            self.var_frame_end.set(h)
+            if hasattr(self, 'var_dist_start'):
+                self.var_dist_start.set(0)
+                self.var_dist_end.set(w)
+
+        # 参数读取
+        try: um_px = float(self.var_um_px.get())
+        except: um_px = 1.0
+        try: s_frame = float(self.var_s_frame.get())
+        except: s_frame = 1.0
+        try: font_size = self.var_plot_font_size.get()
+        except: font_size = 10
+        
+        max_dist = w * um_px
+        max_time = h * s_frame
+        extent = [0, max_dist, max_time, 0] 
+
+        from matplotlib.colors import LogNorm, Normalize
+        vmin, vmax = np.nanmin(data), np.nanmax(data)
+        if self.var_log.get():
+            safe_min = max(vmin, 1e-6) if vmin > 0 else 1e-6
+            norm = LogNorm(vmin=safe_min, vmax=max(vmax, safe_min * 10))
+        else:
+            norm = Normalize(vmin=vmin, vmax=vmax)
+
+        self.ax.clear()
+        self.im_obj = self.ax.imshow(
+            data, aspect='auto', cmap=self.var_cmap.get(), norm=norm, extent=extent, origin='upper'
+        )
+        
+        dist_unit = 'µm' if um_px != 1.0 else 'px'
+        self.ax.set_xlabel(f"Distance ({dist_unit})", fontsize=font_size)
+        self.ax.set_ylabel("Time (s)", fontsize=font_size)
+        self.ax.tick_params(axis='both', labelsize=font_size)
+        
+        # [核心逻辑] 应用手动范围
+        if not self.var_auto_range.get():
+            # 1. 应用 Y 轴 (Time)
+            try:
+                t_start = self.var_frame_start.get() * s_frame
+                t_end = self.var_frame_end.get() * s_frame
+                self.ax.set_ylim(t_end, t_start) 
+            except: pass
+            
+            # 2. 应用 X 轴 (Distance)
+            try:
+                # 假设输入的是像素索引 (与 Y 轴的 Frame 索引逻辑保持一致)
+                d_start = self.var_dist_start.get() * um_px
+                d_end = self.var_dist_end.get() * um_px
+                self.ax.set_xlim(d_start, d_end)
+            except: pass
+
+        if self.cax is None:
+            divider = make_axes_locatable(self.ax)
+            self.cax = divider.append_axes("right", size="5%", pad=0.05)
+        self.cax.clear()
+        self.cbar = self.fig.colorbar(self.im_obj, cax=self.cax)
+        self.cbar.ax.tick_params(labelsize=font_size)
+        
+        try: self.fig.tight_layout(pad=1.2)
+        except: pass
+        self.apply_theme()
+
+
+
+
 
     def on_close(self):
         self.is_open = False
@@ -189,69 +331,6 @@ class KymographWindow:
         if self.var_log.get() != is_log:
             self.var_log.set(is_log)
         self.refresh_plot()
-
-    def refresh_plot(self):
-        if not self.is_open or self.raw_data is None: return
-        
-        data = self.raw_data
-        h, w = data.shape 
-        
-        try: um_px = float(self.var_um_px.get())
-        except: um_px = 1.0
-        try: s_frame = float(self.var_s_frame.get())
-        except: s_frame = 1.0
-        
-        max_dist = w * um_px
-        max_time = h * s_frame
-        extent = [0, max_dist, max_time, 0] 
-
-        from matplotlib.colors import LogNorm, Normalize
-        vmin, vmax = np.nanmin(data), np.nanmax(data)
-        if self.var_log.get():
-            safe_min = max(vmin, 1e-6) if vmin > 0 else 1e-6
-            norm = LogNorm(vmin=safe_min, vmax=max(vmax, safe_min * 10))
-        else:
-            norm = Normalize(vmin=vmin, vmax=vmax)
-
-        cmap = self.var_cmap.get()
-
-        # 4. 绘图
-        self.ax.clear()
-        self.im_obj = self.ax.imshow(
-            data, 
-            aspect='auto', 
-            cmap=cmap, 
-            norm=norm,
-            extent=extent,
-            origin='upper'
-        )
-        
-        self.ax.set_xlabel(f"Distance ({'um' if um_px!=1 else 'px'})")
-        self.ax.set_ylabel(f"Time ({'s' if s_frame!=1 else 'frames'})")
-        
-        # 6. 处理 Y 轴范围
-        if not self.var_auto_range.get():
-            try:
-                f_start = self.var_frame_start.get()
-                f_end = self.var_frame_end.get()
-                t_start = f_start * s_frame
-                t_end = f_end * s_frame
-                self.ax.set_ylim(t_end, t_start) 
-            except: pass
-        
-        # 7. Colorbar [完美修复版]
-        # 如果 self.cax (Colorbar的轴) 不存在，则创建一个新的 (只创建一次)
-        if self.cax is None:
-            divider = make_axes_locatable(self.ax)
-            self.cax = divider.append_axes("right", size="5%", pad=0.05)
-        
-        # 清空 cax 里的旧内容，而不是删除 cax 本身
-        self.cax.clear()
-        
-        # 在指定的 cax 上绘制新的 colorbar，这样 ax 就不会被挤压了
-        self.cbar = self.fig.colorbar(self.im_obj, cax=self.cax)
-        
-        self.apply_theme()
 
 
 class RatioAnalyzerApp:
@@ -775,8 +854,7 @@ class RatioAnalyzerApp:
             
             self.plot_mgr.canvas_widget.bind("<Configure>", self.on_canvas_configure)
             
-            if hasattr(self, 'tb_frame_placeholder'):
-                self.plot_mgr.add_toolbar(self.tb_frame_placeholder)
+            self.plot_mgr.add_toolbar()
                 
             self.roi_mgr.connect(self.plot_mgr.ax)
             
@@ -1270,30 +1348,56 @@ class RatioAnalyzerApp:
         bottom_area.pack(side="bottom", fill="x", pady=5)
 
         # === Row 0: Player Control (播放器控制栏) ===
-        # [关键修复] 这里定义了 row_ctl
         row_ctl = ttk.Frame(bottom_area, style="White.TFrame")
         row_ctl.pack(fill="x", pady=(0, 5))
 
-        # 播放/暂停按钮
+        # 1. 播放/暂停按钮
         self.btn_play = ttk.Button(row_ctl, text="▶", width=4, command=self.toggle_play)
-        self.btn_play.pack(side="left")
+        self.btn_play.pack(side="left", padx=(0, 2))
 
-        # 帧数显示 (Frame X/Y)
+        # 2. [位置调整] 循环开关 (即你提到的"重置"功能)
+        # 放在播放键后面
+        if not hasattr(self, 'loop_start'): self.loop_start = 0
+        if not hasattr(self, 'loop_end'): self.loop_end = 0
+        self.var_loop_active = tk.BooleanVar(value=False)
+
+        self.btn_loop_toggle = ttk.Checkbutton(row_ctl, text="🔁", variable=self.var_loop_active, 
+                                               style="Toggle.TButton", width=3)
+        self.btn_loop_toggle.pack(side="left", padx=(0, 5))
+
+        # 3. 帧数显示 (Frame X/Y)
         self.lbl_frame = ttk.Label(row_ctl, text="0/0", width=8, anchor="center", style="White.TLabel")
-        self.lbl_frame.pack(side="left")
+        self.lbl_frame.pack(side="left", padx=(0, 5))
 
-        # 进度条滑块
+        # 4. [位置调整] 循环起点 (Mark In) -> 放在进度条左边
+        # 宽度减小为 2
+        ttk.Button(row_ctl, text="⦗", width=2, command=self.set_loop_in, style="Compact.TButton")\
+            .pack(side="left", padx=(0, 2))
+
+        # 5. 进度条滑块 (中间自动拉伸)
         self.var_frame = tk.IntVar(value=0)
         self.frame_scale = ttk.Scale(row_ctl, from_=0, to=100, variable=self.var_frame, command=self.on_frame_slide)
-        self.frame_scale.pack(side="left", fill="x", expand=True, padx=5)
+        self.frame_scale.pack(side="left", fill="x", expand=True, padx=0)
 
-        # FPS 选择菜单
+        # 6. [位置调整] 循环终点 (Mark Out) -> 放在进度条右边
+        # 宽度减小为 2
+        ttk.Button(row_ctl, text="⦘", width=2, command=self.set_loop_out, style="Compact.TButton")\
+            .pack(side="left", padx=(2, 0))
+
+        # 7. 循环范围文字提示 (放在后面作为辅助信息)
+        self.lbl_loop_range = ttk.Label(row_ctl, text="", font=("Segoe UI", 8), foreground="gray", style="White.TLabel")
+        self.lbl_loop_range.pack(side="left", padx=(5, 0))
+
+        # 8. FPS 选择菜单
+        # [优化] 限制宽度，使其更紧凑
         self.fps_var = tk.StringVar(value="10 FPS")
-        ttk.OptionMenu(row_ctl, self.fps_var, "10 FPS", "1 FPS", "5 FPS", "10 FPS", "20 FPS", "Max", command=self.change_fps).pack(side="left")
+        fps_menu = ttk.OptionMenu(row_ctl, self.fps_var, "10 FPS", "1 FPS", "5 FPS", "10 FPS", "20 FPS", "Max", command=self.change_fps)
+        fps_menu.config(width=8) # 显式设置宽度缩小
+        fps_menu.pack(side="left", padx=(5, 0))
 
-        # 工具栏占位符 (用于 Matplotlib 工具栏)
-        self.tb_frame_placeholder = ttk.Frame(row_ctl, style="White.TFrame")
-        self.tb_frame_placeholder.pack(side="right")
+        # 工具栏占位符 (保持不变)
+        #self.tb_frame_placeholder = ttk.Frame(row_ctl, style="White.TFrame")
+        #self.tb_frame_placeholder.pack(side="right")
         
         # === Row 1: Tools Grid (ROI 工具区) ===
         grid_area = ttk.Frame(bottom_area, style="White.TFrame")
@@ -1431,6 +1535,7 @@ class RatioAnalyzerApp:
         # [修改] 使用 ToggledFrame 组件，实现"平时隐藏，点三角形展开"的效果
         # 注意：这里直接使用 ToggledFrame (需确保文件头部已 import)
         self.fr_settings = ToggledFrame(grid_area, text="⚙ Settings", style="Card.TFrame")
+        self.fr_settings.lbl_title.configure(font=self.f_bold)
         
         # sticky="new" (North-East-West) 让它靠上、靠左右撑开，防止展开时位置乱跑
         self.fr_settings.grid(row=0, column=2, sticky="new", padx=(0, 5))
@@ -1458,6 +1563,9 @@ class RatioAnalyzerApp:
         )
         self.btn_contact.pack(fill="x", pady=(0, 2), padx=2)
         self.ui_elements["btn_contact"] = self.btn_contact
+
+
+
 
     # [替换原有的 show_kymograph_window 方法]
     def show_kymograph_window(self):
@@ -1493,7 +1601,15 @@ class RatioAnalyzerApp:
         if roi_id not in self.kymo_windows or not self.kymo_windows[roi_id].is_open:
             return
 
-        from processing import extract_kymograph
+        try:
+            from .processing import extract_kymograph
+        except ImportError:
+            try:
+                from processing import extract_kymograph
+            except ImportError:
+                print("Error: Could not import 'processing' module.")
+                return
+            
         d1, d2, bg1, bg2 = self.get_active_data()
         if d1 is None: return
 
@@ -1714,12 +1830,18 @@ class RatioAnalyzerApp:
             # 2. Set Data
             self.session.set_data(raw_channels, roles)
             
-            # 3. UI Refresh
-            if self.session.data2 is not None:
+            # 1. 运动矫正按钮控制
+            # 逻辑变更：只要有数据且是多帧图像 (Time-Lapse)，无论单通道还是双通道，都允许矫正。
+            if self.session.data1 is not None and self.session.data1.shape[0] > 1:
                 self.btn_align.config(state="normal", text=self.t("btn_align"), style="TButton")
-                self.ui_elements["lbl_ratio_thr"].config(foreground="black")
             else:
                 self.btn_align.config(state="disabled")
+
+            # 2. Ratio 阈值控件视觉反馈
+            # 逻辑保持：只有存在 Ratio (双通道) 时，Ratio Min 标签才显示为黑色，否则变灰提示不可用
+            if self.session.data2 is not None:
+                self.ui_elements["lbl_ratio_thr"].config(foreground="black")
+            else:
                 self.ui_elements["lbl_ratio_thr"].config(foreground="gray")
 
             self.data1_raw = None
@@ -1730,6 +1852,12 @@ class RatioAnalyzerApp:
             
             self.frame_scale.configure(to=self.data1.shape[0]-1)
             self.var_frame.set(0); self.frame_scale.set(0)
+
+            # ✅ [新增] 初始化循环范围为全长
+            self.loop_start = 0
+            self.loop_end = self.data1.shape[0] - 1
+            self.var_loop_active.set(False)
+            self._update_loop_label()
             
             count = len(raw_channels)
             if count == 1: self.lbl_ch_indicator.config(text=f" 1 Ch (Int) ", style="BadgeGreen.TLabel")
@@ -1841,7 +1969,13 @@ class RatioAnalyzerApp:
         self.cached_bg1 = 0
         self.cached_bg2 = 0
         self.cached_bg_aux = []
-        
+        self.loop_start = 0
+        self.loop_end = 0
+        self.var_loop_active.set(False)
+        if hasattr(self, 'lbl_loop_range'):
+            self.lbl_loop_range.config(text="")
+
+
         self.c1_path = None
         self.c2_path = None
         self.dual_path = None
@@ -2224,7 +2358,45 @@ class RatioAnalyzerApp:
 
     def save_stack_thread(self):
         if self.data1 is None: return
-        threading.Thread(target=self.save_stack_task).start()
+        
+        # [修复] 1. 在主线程弹出对话框 (UI 线程安全)
+        ts = datetime.datetime.now().strftime("%H%M%S")
+        path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Ratio_Stack_{ts}.tif")
+        
+        if not path: return # 用户取消
+        
+        # 2. 禁用按钮
+        self.btn_save_stack.config(state="disabled", text="⏳ Saving...")
+        
+        # 3. 启动线程，把 path 传进去
+        threading.Thread(target=self.save_stack_task, args=(path,), daemon=True).start()
+    
+    # [修改] 任务函数接收 path 参数，不再自己弹窗
+    def save_stack_task(self, path):
+        try:
+            # 收集参数 (在主线程读取变量最安全，但这里读 DoubleVar 通常没问题，严谨做法是在主线程收集好 params 传进来)
+            # 为了简单，这里暂且保留，如果报错，请在 save_stack_thread 里把 params 收集好传进来
+            params = {
+                "int_thresh": self.var_int_thresh.get(),
+                "ratio_thresh": self.var_ratio_thresh.get(),
+                "smooth": int(self.var_smooth.get()),
+                "log_scale": self.log_var.get(),
+                "use_custom_bg": self.use_custom_bg_var.get()
+            }
+
+            def progress_cb(curr, total):
+                self.root.after(0, lambda: self.ui_elements["btn_save_stack"].config(text=f"⏳ {curr}/{total}"))
+
+            # [CALL MODEL]
+            self.session.export_processed_stack(path, params, progress_callback=progress_cb)
+            
+            self.root.after(0, lambda: messagebox.showinfo("Success", f"Stack saved to:\n{path}"))
+            
+        except Exception as e: 
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Save failed: {e}"))
+            import traceback; traceback.print_exc()
+        finally: 
+            self.root.after(0, lambda: self.ui_elements["btn_save_stack"].config(state="normal", text=self.t("btn_save_stack")))
     
     def save_stack_task(self):
         try:
@@ -2346,12 +2518,95 @@ class RatioAnalyzerApp:
         else: self.is_playing = True; self.btn_play.config(text="⏸"); self.play_loop()
     
     def play_loop(self):
-        if not self.is_playing: return
-        curr = self.var_frame.get(); nxt = 0 if curr >= self.data1.shape[0]-1 else curr + 1
-        self.var_frame.set(nxt); self.frame_scale.set(nxt)
-        self.lbl_frame.config(text=f"{nxt}/{self.data1.shape[0]-1}"); self.update_plot()
+        if not self.is_playing or self.data1 is None: return
+        
+        curr = self.var_frame.get()
+        max_frame = self.data1.shape[0] - 1
+        
+        loop_on = self.var_loop_active.get()
+        
+        # 计算下一帧
+        next_frame = curr + 1
+        
+        if loop_on:
+            # === 循环模式逻辑 ===
+            # 1. 动态获取当前的有效范围，并防止越界
+            safe_end = min(self.loop_end, max_frame)
+            safe_start = max(0, min(self.loop_start, safe_end)) # 确保 start 不小于0且不大于 end
+            
+            # 2. 如果当前范围不合法（比如起点=终点），则强制全范围
+            if safe_start >= safe_end:
+                 safe_start = 0
+                 safe_end = max_frame
+
+            # 3. 核心循环判断
+            # 如果当前帧已经超过了终点，或者当前帧甚至小于起点（比如用户拖动进度条到了前面）
+            # 则跳回起点
+            if next_frame > safe_end or next_frame < safe_start: # 注意这里用 next_frame 判断更流畅
+                next_frame = safe_start
+        else:
+            # === 普通模式逻辑 ===
+            if curr >= max_frame:
+                next_frame = 0
+
+        # 应用下一帧
+        self.var_frame.set(next_frame)
+        self.frame_scale.set(next_frame)
+        self.lbl_frame.config(text=f"{next_frame}/{max_frame}")
+        self.update_plot()
+        
         dt = 1 if "Max" in self.fps_var.get() else int(1000/int(self.fps_var.get().split()[0]))
         self.root.after(dt, self.play_loop)
+
+
+    def set_loop_in(self):
+        """将当前帧设为循环起点"""
+        if self.data1 is None: return
+        curr = self.var_frame.get()
+        max_f = self.data1.shape[0] - 1
+        
+        # 逻辑保护：如果起点设在终点后面，就把终点推到最后
+        if curr >= self.loop_end:
+            self.loop_end = max_f
+            
+        self.loop_start = curr
+        
+        # 自动开启循环模式，方便用户
+        self.var_loop_active.set(True)
+        self._update_loop_label()
+
+    def set_loop_out(self):
+        """将当前帧设为循环终点"""
+        if self.data1 is None: return
+        curr = self.var_frame.get()
+        
+        # 逻辑保护：如果终点设在起点前面，就把起点设为0
+        if curr <= self.loop_start:
+            self.loop_start = 0
+            
+        self.loop_end = curr
+        
+        # 自动开启循环模式
+        self.var_loop_active.set(True)
+        self._update_loop_label()
+
+    def _update_loop_label(self):
+        """更新 UI 上的范围文字"""
+        if self.data1 is None:
+            self.lbl_loop_range.config(text="")
+            return
+            
+        max_f = self.data1.shape[0] - 1
+        
+        # 如果是全范围，显示 "All"
+        if self.loop_start == 0 and self.loop_end == max_f:
+             self.lbl_loop_range.config(text="All", foreground="gray")
+        else:
+             # 如果有特定范围，显示蓝色数字
+             self.lbl_loop_range.config(text=f"{self.loop_start}-{self.loop_end}", foreground="#007acc")
+
+
+
     
     def change_fps(self, v):
         if "Max" in v: self.fps = 100
