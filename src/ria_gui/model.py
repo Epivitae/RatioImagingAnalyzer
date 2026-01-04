@@ -61,21 +61,29 @@ class AnalysisSession:
 
 
     # [替换方法 1]
-    def inspect_file_metadata(self, filepath: str) -> Tuple[bool, int, int]:
+    def inspect_file_metadata(self, filepath: str) -> Tuple[bool, int, int, str]:
         """
-        检查文件的元数据。
+        [修改] 检查文件的元数据。
         Returns:
             - is_multichannel (bool): 是否明确为多通道
             - channel_count (int): 通道数
             - z_slice_count (int): Z轴层数 (默认为1)
+            - axes_str (str): 识别到的轴顺序 (如 'ZYX', 'TZCYX')
         """
         is_explicit_multichannel = False
         detected_channels = 0
         detected_z = 1
+        detected_axes = "?"
 
         try:
             with tiff.TiffFile(filepath) as tif:
                 
+                # --- 获取 Axes 信息 ---
+                if len(tif.series) > 0:
+                    series = tif.series[0]
+                    if hasattr(series, 'axes'):
+                        detected_axes = series.axes  # 例如 'TZCYX' 或 'ZYX'
+
                 # --- 检测逻辑 A: ImageJ Metadata ---
                 if tif.imagej_metadata:
                     detected_channels = tif.imagej_metadata.get('channels', 1)
@@ -85,52 +93,53 @@ class AnalysisSession:
                         is_explicit_multichannel = True
 
                 # --- 检测逻辑 B: OME-XML 或 Axes 字符串 ---
-                if len(tif.series) > 0:
-                    series = tif.series[0]
+                # 如果 ImageJ 元数据没读到，尝试从 Axes 字符串推断
+                if hasattr(series, 'axes'):
+                    # 尝试获取 C 维度
+                    if 'C' in detected_axes:
+                        c_index = detected_axes.find('C')
+                        c_dim = series.shape[c_index]
+                        if c_dim > 1:
+                            is_explicit_multichannel = True
+                            detected_channels = c_dim
                     
-                    if hasattr(series, 'axes'):
-                        axes_str = series.axes # 例如 'TZCYX'
-                        
-                        # 尝试获取 C 维度
-                        if 'C' in axes_str:
-                            c_index = axes_str.find('C')
-                            c_dim = series.shape[c_index]
-                            if c_dim > 1:
-                                is_explicit_multichannel = True
-                                detected_channels = c_dim
-                        
-                        # 尝试获取 Z 维度
-                        if 'Z' in axes_str:
-                            z_index = axes_str.find('Z')
+                    # 尝试获取 Z 维度
+                    if 'Z' in detected_axes:
+                        z_index = detected_axes.find('Z')
+                        # 如果 ImageJ 没读到 Z，就信这个
+                        if detected_z == 1: 
                             detected_z = series.shape[z_index]
                                 
         except Exception as e:
             print(f"[Model Warning] Metadata inspection failed for {filepath}: {e}")
             
-        return is_explicit_multichannel, detected_channels, detected_z
+        return is_explicit_multichannel, detected_channels, detected_z, detected_axes
+    
+    
 
     # [替换方法 2]
     def load_channels_from_file(self, 
                                 filepath: str, 
                                 is_interleaved: bool, 
                                 expected_channels: int,
-                                z_proj_method: str = None) -> List[np.ndarray]:
+                                z_proj_method: str = None,
+                                user_axes: str = None) -> List[np.ndarray]: # [修改] 增加参数
         """
         从单个文件中读取并分离通道数据，支持 Z-Projection。
         """
         if not filepath or not os.path.exists(filepath):
             raise ValueError(f"File not found: {filepath}")
             
-        # 调用底层工具，传入 z_projection_method
+        # 调用底层工具
         channels = read_and_split_multichannel(
             filepath, 
             is_interleaved, 
             expected_channels,
-            z_projection_method=z_proj_method
+            z_projection_method=z_proj_method,
+            override_axes=user_axes # [修改] 传入覆写的 Axes
         )
         
         return channels
-
 
 
     def load_separate_channels(self, path1: str, path2: str) -> List[np.ndarray]:

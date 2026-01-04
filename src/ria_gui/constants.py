@@ -30,7 +30,7 @@ LANG_MAP = {
     "btn_c1": {"cn": "📂 通道 1", "en": "📂 Ch1"},
     "btn_c2": {"cn": "📂 通道 2", "en": "📂 Ch2"},
     "btn_dual": {"cn": "📂 选择多通道文件", "en": "📂 Select File"},
-    "chk_interleaved": {"cn": "交错堆栈 (Ch1,Ch2,Ch1..)", "en": "Mixed Stacks (Ch1, Ch2, Ch3)"},
+    "chk_interleaved": {"cn": "交错堆栈", "en": "Mixed Stacks"},
     
     "btn_load": {"cn": "🚀 加载并分析", "en": "🚀 Load & Analyze"},
     "lbl_no_file": {"cn": "...", "en": "..."},

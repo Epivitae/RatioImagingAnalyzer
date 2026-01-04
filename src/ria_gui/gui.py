@@ -245,7 +245,15 @@ class RatioAnalyzerApp:
         if hasattr(self, 'lbl_ch_count'): self.lbl_ch_count.config(foreground=COLOR_NORMAL)
 
         # 2. 调用 Model
-        is_explicit_multichannel, detected_channels, detected_z = self.session.inspect_file_metadata(filepath)
+        is_explicit_multichannel, detected_channels, detected_z, detected_axes = self.session.inspect_file_metadata(filepath)
+
+        # [新增] 缓存检测到的 Z 层数，供 _on_axes_change 使用
+        self.cached_z_count = detected_z
+
+        # [核心] 自动填充 Axes 输入框
+        # 注意：这行代码会触发 _on_axes_change，所以后续的 UI 更新逻辑都交在那里面处理
+        if hasattr(self, 'var_axes_entry'):
+            self.var_axes_entry.set(detected_axes)
 
         # 3. 更新 Channel 状态
         if is_explicit_multichannel:
@@ -257,19 +265,9 @@ class RatioAnalyzerApp:
         else:
             print("[Metadata] File detected as 1-Channel (or unknown). User can manually split.")
 
-        # 4. [修改] 更新 Z-Stack 状态 (使用简洁符号)
-        if detected_z > 1:
-            print(f"[Metadata] Z-Stack detected: {detected_z} slices.")
-            self.lbl_z_indicator.config(text=f"❏{detected_z}", style="BadgeOrange.TLabel")
-            
-            # 启用投影选择
-            self.lbl_z_proj.config(state="normal", foreground=COLOR_NORMAL)
-            self.combo_z_proj.config(state="readonly")
-        else:
-            # 隐藏徽章和禁用选择
-            self.lbl_z_indicator.config(text="", style="White.TLabel")
-            self.lbl_z_proj.config(state="disabled", foreground=COLOR_DISABLED)
-            self.combo_z_proj.config(state="disabled")
+
+
+
 
     def auto_load_project(self, filepath):
         """
@@ -547,7 +545,7 @@ class RatioAnalyzerApp:
         self.btn_dual.pack(side="left")
         self.ui_elements["btn_dual"] = self.btn_dual
 
-        # [布局调整] 徽章区
+        # 徽章区
         self.lbl_ch_indicator = ttk.Label(f_row, text="", style="White.TLabel")
         self.lbl_ch_indicator.pack(side="right", padx=(2, 5))
 
@@ -557,10 +555,23 @@ class RatioAnalyzerApp:
         self.lbl_dual_path = ttk.Label(f_row, text="...", foreground="gray", anchor="w", style="White.TLabel", width=1)
         self.lbl_dual_path.pack(side="left", padx=5, fill="x", expand=True)
 
-        # --- Row 2: Interleaved & Channels (Z-Proj 移走了) ---
+        # --- Row 2: Axes Input & Manual Split ---
         f_opts = ttk.Frame(self.tab_dual, style="White.TFrame")
         f_opts.pack(fill="x", pady=(2, 0))
         
+        ttk.Label(f_opts, text="Axes:", style="White.TLabel", foreground="gray").pack(side="left")
+        
+        # [修改] 定义变量并绑定监听
+        self.var_axes_entry = tk.StringVar(value="?")
+        # 核心：一旦变量内容改变（无论是代码set的，还是用户敲键盘改的），都触发 _on_axes_change
+        self.var_axes_entry.trace_add("write", self._on_axes_change) 
+        
+        self.entry_axes = ttk.Entry(f_opts, textvariable=self.var_axes_entry, width=7, font=("Segoe UI", 8))
+        self.entry_axes.pack(side="left", padx=(2, 8))
+        
+        # 添加一个 Tooltip 或者回车绑定（可选，这里绑定回车触发重读，或者不做也行，反正Load时会读取）
+        # self.entry_axes.bind("<Return>", lambda e: self.focus()) 
+
         # Interleaved Checkbox
         self.chk_inter = ttk.Checkbutton(f_opts, variable=self.is_interleaved_var, style="Toggle.TButton")
         self.chk_inter.pack(side="left")
@@ -594,36 +605,81 @@ class RatioAnalyzerApp:
         f_actions = ttk.Frame(self.grp_file, style="Card.TFrame")
         f_actions.pack(fill="x", pady=(10, 0))
         
-        # 1. Z-Projection 控件 (最左边)
+        # 1. Z-Projection 控件
         self.lbl_z_proj = ttk.Label(f_actions, text="Z-Proj:", state="disabled", style="White.TLabel")
         self.lbl_z_proj.pack(side="left", padx=(0, 2))
         
         self.z_proj_var = tk.StringVar(value="Ave (AIP)")
+        # 依然保留 None 选项，作为双重保险
         self.combo_z_proj = ttk.Combobox(f_actions, textvariable=self.z_proj_var, 
-                                         values=["Max (MIP)", "Ave (AIP)"], 
-                                         state="disabled", width=9, font=("Segoe UI", 8))
+                                         values=["Max (MIP)", "Ave (AIP)", "None (Treat as T)"], 
+                                         state="disabled", width=14, font=("Segoe UI", 8))
         self.combo_z_proj.pack(side="left", padx=(0, 5))
 
-        # =========================================================
-        # [修改] 中间区域：Load 按钮 / 进度条 的容器
-        # =========================================================
-        # 创建一个容器 Frame，占满中间的空间
+        # 2. 加载按钮容器
         self.fr_load_container = ttk.Frame(f_actions, style="Card.TFrame")
         self.fr_load_container.pack(side="left", fill="x", expand=True, padx=(0, 2))
         
-        # A. 正常显示的按钮 (默认 pack)
         self.btn_load = ttk.Button(self.fr_load_container, command=self.load_data, state="disabled", text="🚀 Load & Analyze")
         self.btn_load.pack(fill="both", expand=True)
         self.ui_elements["btn_load"] = self.btn_load
 
-        # B. 加载时显示的进度条 (默认不 pack，隐藏状态)
-        # mode='indeterminate' 表示左右来回跑，因为读取文件时长不确定
         self.pb_loading = ttk.Progressbar(self.fr_load_container, orient="horizontal", mode="determinate", maximum=100)
-        # =========================================================
 
-        # 3. 清除按钮 (最右边)
+        # 3. 清除按钮
         self.btn_clear_data = ttk.Button(f_actions, text="🗑", width=4, command=self.clear_all_data, style="Gray.TButton")
         self.btn_clear_data.pack(side="right", fill="y")
+
+    def _on_axes_change(self, *args):
+        """
+        [修改] 实时监听 Axes 输入框。
+        逻辑：
+        1. 只要 Axes 里没有 'Z'，强制禁用 Z-Proj 并清空文字。
+        2. 只要 Axes 里没有 'Z'，隐藏 Z-Stack 徽章。
+        """
+        # 尚未初始化完成时可能报错，先做检查
+        if not hasattr(self, 'combo_z_proj') or not hasattr(self, 'lbl_z_proj'):
+            return
+
+        axes_text = self.var_axes_entry.get().upper()
+        COLOR_NORMAL = "#333333"
+        COLOR_DISABLED = "#A0A0A0"
+
+        # 获取缓存的层数，默认为 1
+        z_count = getattr(self, 'cached_z_count', 1)
+
+        if 'Z' in axes_text:
+            # === 情况 A: 存在 Z 轴 ===
+            
+            # 1. 恢复 Z-Stack 徽章 (如果层数 > 1)
+            if z_count > 1:
+                self.lbl_z_indicator.config(text=f"❏{z_count}", style="BadgeOrange.TLabel")
+            else:
+                self.lbl_z_indicator.config(text="", style="White.TLabel")
+
+            # 2. 激活投影选项
+            self.lbl_z_proj.config(state="normal", foreground=COLOR_NORMAL)
+            self.combo_z_proj.config(state="readonly")
+            
+            # [新增] 如果文字被清空了，恢复默认值
+            # 这样看起来就是从“不可用状态”变回了“可用状态”
+            if not self.z_proj_var.get():
+                self.z_proj_var.set("Ave (AIP)")
+
+        else:
+            # === 情况 B: 无 Z 轴 (被用户删除了，或本身就没有) ===
+            
+            # 1. [新增] 隐藏 Z-Stack 徽章
+            self.lbl_z_indicator.config(text="", style="White.TLabel")
+
+            # 2. 禁用投影选项
+            self.lbl_z_proj.config(state="disabled", foreground=COLOR_DISABLED)
+            self.combo_z_proj.config(state="disabled")
+            
+            # 3. [新增] 清空下拉框文字
+            # 这是一个视觉 Hack，因为 disabled 的文字通常还是黑色的。
+            # 直接把它设为空字符串，用户就看不到了，实现了“彻底变灰/消失”的效果。
+            self.z_proj_var.set("")
 
     def setup_preprocess_group(self):
         self.grp_pre = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
@@ -1292,15 +1348,23 @@ class RatioAnalyzerApp:
             "is_interleaved": self.is_interleaved_var.get(),
             "n_ch": self.var_n_channels.get() if self.is_interleaved_var.get() else 2,
             "z_method": None,
-            "on_success_cb": on_success, # [关键] 存入 params 传给线程
-            "predefined_roles": predefined_roles
+            "on_success_cb": on_success, 
+            "predefined_roles": predefined_roles,
+            "user_axes": None # [新增] 用于存储用户手动修正的 Axes
         }
+
+        # [新增] 读取用户输入的 Axes 字符串
+        if current_tab == 0 and hasattr(self, 'var_axes_entry'):
+            raw_axes = self.var_axes_entry.get().strip().upper()
+            if raw_axes and raw_axes != "?":
+                params["user_axes"] = raw_axes
 
         # 获取 Z-Projection 参数
         if hasattr(self, 'combo_z_proj') and str(self.combo_z_proj['state']) != 'disabled':
             val = self.z_proj_var.get()
             if "Max" in val: params["z_method"] = "max"
             elif "Ave" in val: params["z_method"] = "ave"
+            elif "None" in val: params["z_method"] = None 
 
         threading.Thread(target=self._load_data_thread, args=(params,), daemon=True).start()
 
@@ -1317,10 +1381,11 @@ class RatioAnalyzerApp:
                     params["dual_path"], 
                     params["is_interleaved"], 
                     params["n_ch"],
-                    z_proj_method=params["z_method"]
+                    z_proj_method=params["z_method"],
+                    user_axes=params.get("user_axes") # [核心修改] 传入用户定义的 Axes
                 )
             elif params["tab_idx"] == 1:
-                # 双文件加载
+                # 双文件加载 (通常不需要 axes 修正，暂时忽略)
                 raw_channels = self.session.load_separate_channels(
                     params["c1_path"], 
                     params["c2_path"]
@@ -1336,7 +1401,9 @@ class RatioAnalyzerApp:
             err_msg = str(e)
             self.root.after(0, lambda: self._load_data_error(err_msg))
 
-    # src/gui.py
+
+
+
 
     # [关键修改] 必须在括号里加上 predefined_roles=None，否则就会报 "but 4 were given"
     def _load_data_post_process(self, raw_channels, on_success_cb=None, predefined_roles=None):
