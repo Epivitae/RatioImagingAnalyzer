@@ -2702,12 +2702,25 @@ class RatioAnalyzerApp:
 
     def save_project_logic(self, filepath):
         try:
+            project_dir = os.path.dirname(os.path.abspath(filepath))
+            def to_relative(path):
+                if not path or not os.path.exists(path):
+                    return path
+                try:
+                    # 尝试计算相对路径
+                    rel = os.path.relpath(path, project_dir)
+                    return rel
+                except ValueError:
+                    # 如果在不同磁盘分区（Windows），无法计算相对路径，则保留绝对路径
+                    return path
+           
+           
             # 1. 收集源文件信息
             source_info = {
                 "mode": "single" if self.dual_path else "separate",
-                "path_dual": self.dual_path,
-                "path_c1": self.c1_path,
-                "path_c2": self.c2_path,
+                "path_dual": to_relative(self.dual_path), # 转为相对路径
+                "path_c1": to_relative(self.c1_path),     # 转为相对路径
+                "path_c2": to_relative(self.c2_path),     # 转为相对路径
                 "is_interleaved": self.is_interleaved_var.get(),
                 "n_channels": self.var_n_channels.get(),
                 # [新增] 保存 Z-Projection 设置
@@ -2801,15 +2814,40 @@ class RatioAnalyzerApp:
             view = data.get("view", {})
             rois = data.get("rois", [])
             
+            # --- [新增] 路径解析辅助函数 ---
+            project_dir = os.path.dirname(os.path.abspath(filepath))
+
+            def resolve_path(path):
+                if not path: return None
+                
+                # 策略 1: 尝试作为相对路径拼接 (Project目录 + 相对路径)
+                # 这样即使 path 存的是文件名，也能正确拼出全路径
+                abs_path_rel = os.path.abspath(os.path.join(project_dir, path))
+                if os.path.exists(abs_path_rel):
+                    return abs_path_rel
+                
+                # 策略 2: 尝试作为绝对路径 (兼容旧文件或不同盘符的情况)
+                if os.path.exists(path):
+                    return path
+                
+                return None # 没找到
+            # ----------------------------
+
             # --- 阶段 1: 恢复 UI 状态以便 load_data 读取 ---
             self.clear_all_data()
             
             mode = src.get("mode", "single")
+            
             if mode == "single":
-                p = src.get("path_dual")
-                if not p or not os.path.exists(p):
-                    messagebox.showerror("Error", f"Original source file not found:\n{p}")
+                # 解析路径
+                raw_path = src.get("path_dual")
+                p = resolve_path(raw_path)
+
+                if not p:
+                    # 只有当两个尝试都失败时才报错
+                    messagebox.showerror("Error", f"Original source file not found:\n{raw_path}\n(Checked in: {project_dir})")
                     return
+                
                 self.nb_import.select(0)
                 self.dual_path = p
                 self.lbl_dual_path.config(text=os.path.basename(p))
@@ -2824,11 +2862,16 @@ class RatioAnalyzerApp:
                     self.z_proj_var.set(z_method)
                 
             else:
-                p1 = src.get("path_c1")
-                p2 = src.get("path_c2")
-                if not p1 or not os.path.exists(p1) or not p2 or not os.path.exists(p2):
-                    messagebox.showerror("Error", "Original source files not found.")
+                raw_p1 = src.get("path_c1")
+                raw_p2 = src.get("path_c2")
+                
+                p1 = resolve_path(raw_p1)
+                p2 = resolve_path(raw_p2)
+
+                if not p1 or not p2:
+                    messagebox.showerror("Error", f"Original source files not found.\n{raw_p1}\n{raw_p2}")
                     return
+
                 self.nb_import.select(1)
                 self.c1_path = p1; self.lbl_c1_path.config(text=os.path.basename(p1))
                 self.c2_path = p2; self.lbl_c2_path.config(text=os.path.basename(p2))
