@@ -55,7 +55,7 @@ HOOK_FILE = "rthook_path_fix.py"
 
 # [重要修正] 还原为原始的排除列表，不再强制排除 matplotlib 后端，防止运行时崩溃
 EXCLUDES = [
-    "matplotlib.tests", "tkinter.test", "unittest"
+    "matplotlib.tests", "tkinter.test"
 ]
 
 console = Console(theme=Theme({"info": "cyan", "warning": "yellow", "error": "bold red", "success": "bold green"}))

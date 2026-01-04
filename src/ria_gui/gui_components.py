@@ -756,3 +756,78 @@ class RoiManager:
             self.app.plot_mgr.canvas.draw_idle()
         except Exception as e:
             tk.messagebox.showerror("Error", f"Failed to calc background: {e}")
+
+    # =========================================================
+    #  [新增] 支持工程文件保存/加载的接口
+    # =========================================================
+
+    def get_all_rois_data(self):
+        """
+        获取当前所有 ROI 的纯数据列表（用于保存到 Project 文件）。
+        """
+        if self.temp_roi: self._commit_temp_roi()
+        self._stop_selector()
+        
+        data_list = []
+        for roi in self.roi_list:
+            item = {"type": roi['type'], "color": roi['color'], "id": roi['id']}
+            if roi['type'] == "polygon": 
+                # numpy array 转 list 以便 JSON 序列化
+                item["params"] = np.array(roi['params']).tolist() 
+            else: 
+                item["params"] = roi['params']
+            data_list.append(item)
+        return data_list
+
+    def restore_rois_from_data(self, data_list):
+        """
+        从数据列表恢复 ROI（用于从 Project 文件加载）。
+        """
+        if self.app.data1 is None:
+            # 如果没有加载图像，无法计算 Mask，因此无法恢复 ROI
+            print("Warning: Cannot restore ROIs. No image data loaded.")
+            return
+
+        # 清除现有 ROI
+        self.clear_all() 
+
+        if not isinstance(data_list, list):
+            return
+
+        for item in data_list:
+            try:
+                rtype = item["type"]
+                params = item["params"]
+                color = item.get("color", ROI_COLORS[0])
+
+                # 参数类型转换 (JSON 加载回来通常是 list，需要转回 tuple 或 numpy)
+                if rtype == "polygon": 
+                    params = np.array(params)
+                else:
+                    params = tuple(params)
+                    # 特殊处理圆形的参数结构: ((x,y), w, h)
+                    if rtype == "circle": 
+                        params = (tuple(params[0]), params[1], params[2])
+
+                # 生成 Mask
+                mask = None
+                if rtype != "line":
+                    mask = self._generate_mask(rtype, params)
+                    if mask is None: continue
+
+                # 创建视觉元素
+                patch_group = self._create_high_contrast_roi(rtype, params, color)
+                
+                if patch_group:
+                    self.roi_list.append({
+                        'type': rtype,
+                        'patch_group': patch_group,
+                        'mask': mask,
+                        'color': color,
+                        'id': len(self.roi_list) + 1,
+                        'params': params
+                    })
+            except Exception as e: 
+                print(f"Error restoring ROI: {e}")
+        
+        self.app.plot_mgr.canvas.draw_idle()
