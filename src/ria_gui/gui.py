@@ -13,6 +13,7 @@ import json
 from typing import List, Optional
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
 # --- Import Components ---
@@ -45,98 +46,212 @@ except ImportError:
 warnings.filterwarnings('ignore')
 
 
+# src/gui.py (KymographWindow 部分)
+
 class KymographWindow:
-    def __init__(self, master, roi_id, app, title="Kymograph"): # [修改] 增加 app 参数
+    def __init__(self, master, roi_id, app, title="Kymograph"):
         self.window = Toplevel(master)
         self.window.title(f"{title} - ROI {roi_id}")
-        self.window.geometry("600x400")
+        self.window.geometry("700x550")
         self.roi_id = roi_id
-        self.app = app # [新增] 保存 App 引用以获取主题颜色
+        self.app = app
         
         self.is_open = True
         self.window.protocol("WM_DELETE_WINDOW", self.on_close)
         
-        # 初始化绘图
+        # --- Data Cache ---
+        self.raw_data = None
+        
+        # --- UI Variables ---
+        self.var_um_px = tk.DoubleVar(value=1.0)
+        self.var_s_frame = tk.DoubleVar(value=1.0)
+        self.var_frame_start = tk.IntVar(value=0)
+        self.var_frame_end = tk.IntVar(value=0)
+        self.var_auto_range = tk.BooleanVar(value=True)
+        self.var_cmap = tk.StringVar(value="jet")
+        self.var_log = tk.BooleanVar(value=False)
+
+        # --- Layout ---
+        # 1. Plot Area
+        plot_frame = ttk.Frame(self.window)
+        plot_frame.pack(side="top", fill="both", expand=True)
+        
         self.fig = plt.Figure(figsize=(5, 4), dpi=100)
         self.ax = self.fig.add_subplot(111)
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.window)
+        self.canvas = FigureCanvasTkAgg(self.fig, master=plot_frame)
         self.canvas.get_tk_widget().pack(side="top", fill="both", expand=True)
         
-        self.im_obj = None 
-        self.cbar = None # [新增] 保存 Colorbar 引用
+        self.toolbar = NavigationToolbar2Tk(self.canvas, plot_frame)
+        self.toolbar.update()
         
-        # [新增] 初始应用当前主题
+        self.im_obj = None 
+        self.cbar = None
+        self.cax = None # [新增] 专门用于存放 Colorbar 的坐标轴，防止主图缩小
+
+        # 2. Control Panel
+        ctrl_panel = ttk.Frame(self.window, padding=5, style="Card.TFrame")
+        ctrl_panel.pack(side="bottom", fill="x")
+        
+        self._setup_controls(ctrl_panel)
+        
         self.apply_theme()
+
+    def _setup_controls(self, parent):
+        # ... (这部分代码保持不变，省略以节省篇幅) ...
+        # Group 1: Calibration
+        fr_calib = ttk.LabelFrame(parent, text="📏 Calibration", padding=5, style="Card.TLabelframe")
+        fr_calib.pack(side="left", fill="both", expand=True, padx=2)
+        
+        f1 = ttk.Frame(fr_calib, style="Card.TFrame"); f1.pack(fill="x")
+        ttk.Label(f1, text="Dist:", width=5).pack(side="left")
+        ttk.Entry(f1, textvariable=self.var_um_px, width=5).pack(side="left")
+        ttk.Label(f1, text="um/px").pack(side="left")
+        
+        f2 = ttk.Frame(fr_calib, style="Card.TFrame"); f2.pack(fill="x", pady=2)
+        ttk.Label(f2, text="Time:", width=5).pack(side="left")
+        ttk.Entry(f2, textvariable=self.var_s_frame, width=5).pack(side="left")
+        ttk.Label(f2, text="s/frame").pack(side="left")
+        
+        parent.bind_all("<Return>", lambda e: self.refresh_plot())
+
+        # Group 2: Range
+        fr_range = ttk.LabelFrame(parent, text="🔍 Time Range (Frames)", padding=5, style="Card.TLabelframe")
+        fr_range.pack(side="left", fill="both", expand=True, padx=2)
+        
+        self.chk_auto = ttk.Checkbutton(fr_range, text="Auto / Full", variable=self.var_auto_range, 
+                                        command=self._toggle_range_inputs, style="White.TCheckbutton")
+        self.chk_auto.pack(anchor="w")
+        
+        f_rng = ttk.Frame(fr_range, style="Card.TFrame")
+        f_rng.pack(fill="x")
+        self.ent_start = ttk.Entry(f_rng, textvariable=self.var_frame_start, width=5)
+        self.ent_start.pack(side="left")
+        ttk.Label(f_rng, text="-").pack(side="left")
+        self.ent_end = ttk.Entry(f_rng, textvariable=self.var_frame_end, width=5)
+        self.ent_end.pack(side="left")
+        
+        ttk.Button(fr_range, text="Apply", command=self.refresh_plot, width=6, style="Compact.TButton").pack(side="right", padx=2)
+
+        # Group 3: Appearance
+        fr_look = ttk.LabelFrame(parent, text="🎨 Appearance", padding=5, style="Card.TLabelframe")
+        fr_look.pack(side="left", fill="both", expand=True, padx=2)
+        
+        cmap_opts = ["jet", "coolwarm", "viridis", "magma", "gray", "inferno"]
+        ttk.OptionMenu(fr_look, self.var_cmap, self.var_cmap.get(), *cmap_opts, command=lambda _: self.refresh_plot()).pack(fill="x", pady=2)
+        ttk.Checkbutton(fr_look, text="Log Scale", variable=self.var_log, command=self.refresh_plot, style="White.TCheckbutton").pack(anchor="w")
+
+    def _toggle_range_inputs(self):
+        state = "disabled" if self.var_auto_range.get() else "normal"
+        self.ent_start.config(state=state)
+        self.ent_end.config(state=state)
+        self.refresh_plot()
 
     def on_close(self):
         self.is_open = False
         self.window.destroy()
 
     def apply_theme(self):
-        """
-        [新增] 应用当前 App 主题颜色到 Kymograph 窗口
-        """
         if not self.window.winfo_exists(): return
-        
         try:
-            # 1. 获取颜色
             mode = self.app.current_theme
             c = self.app.THEME_COLORS[mode]
             bg, fg = c["plot_bg"], c["plot_fg"]
             
-            # 2. 设置窗口背景
             self.window.configure(bg=c["bg"])
-            
-            # 3. 设置绘图区背景
             self.fig.patch.set_facecolor(bg)
             self.ax.set_facecolor(bg)
             
-            # 4. 设置坐标轴颜色 (Spines, Ticks, Labels)
-            for spine in self.ax.spines.values():
-                spine.set_color(fg)
+            for spine in self.ax.spines.values(): spine.set_color(fg)
             self.ax.xaxis.label.set_color(fg)
             self.ax.yaxis.label.set_color(fg)
-            self.ax.tick_params(axis='x', colors=fg)
-            self.ax.tick_params(axis='y', colors=fg)
+            self.ax.tick_params(axis='both', colors=fg)
             self.ax.title.set_color(fg)
             
-            # 5. 设置 Colorbar 颜色 (如果存在)
+            # [修改] 对 Colorbar 的处理更安全
             if self.cbar:
                 self.cbar.ax.yaxis.set_tick_params(color=fg, labelcolor=fg)
-                self.cbar.ax.yaxis.label.set_color(fg)
+                self.cbar.set_label(self.cbar.ax.get_ylabel(), color=fg)
             
+            if self.toolbar:
+                tb_bg = c.get("toolbar_bg", "#F0F0F0")
+                self.toolbar.config(background=tb_bg)
+                self.toolbar._message_label.config(background=tb_bg, foreground="black")
+
             self.canvas.draw_idle()
-            
-        except Exception as e:
-            print(f"Kymo Theme Error: {e}")
+        except Exception as e: print(f"Kymo Theme Error: {e}")
 
     def update_data(self, data, is_log=False):
         if not self.is_open: return
+        self.raw_data = data
+        if self.var_auto_range.get():
+            self.var_frame_start.set(0)
+            self.var_frame_end.set(data.shape[0])
+        if self.var_log.get() != is_log:
+            self.var_log.set(is_log)
+        self.refresh_plot()
+
+    def refresh_plot(self):
+        if not self.is_open or self.raw_data is None: return
         
-        # 1. 首次绘图
-        if self.im_obj is None:
-            if is_log:
-                from matplotlib.colors import LogNorm
-                self.im_obj = self.ax.imshow(data, aspect='auto', cmap='jet', norm=LogNorm())
-            else:
-                self.im_obj = self.ax.imshow(data, aspect='auto', cmap='jet')
-            
-            self.ax.set_xlabel("Distance (px)")
-            self.ax.set_ylabel("Time (frames)")
-            
-            # [修改] 保存 colorbar 引用并立即应用主题
-            self.cbar = self.fig.colorbar(self.im_obj, ax=self.ax)
-            self.apply_theme() 
+        data = self.raw_data
+        h, w = data.shape 
         
-        # 2. 后续更新
+        try: um_px = float(self.var_um_px.get())
+        except: um_px = 1.0
+        try: s_frame = float(self.var_s_frame.get())
+        except: s_frame = 1.0
+        
+        max_dist = w * um_px
+        max_time = h * s_frame
+        extent = [0, max_dist, max_time, 0] 
+
+        from matplotlib.colors import LogNorm, Normalize
+        vmin, vmax = np.nanmin(data), np.nanmax(data)
+        if self.var_log.get():
+            safe_min = max(vmin, 1e-6) if vmin > 0 else 1e-6
+            norm = LogNorm(vmin=safe_min, vmax=max(vmax, safe_min * 10))
         else:
-            self.im_obj.set_data(data)
-            self.im_obj.set_clim(vmin=np.nanmin(data), vmax=np.nanmax(data))
-            self.im_obj.set_extent((0, data.shape[1], data.shape[0], 0))
-            self.ax.relim()
-            self.ax.autoscale_view()
+            norm = Normalize(vmin=vmin, vmax=vmax)
+
+        cmap = self.var_cmap.get()
+
+        # 4. 绘图
+        self.ax.clear()
+        self.im_obj = self.ax.imshow(
+            data, 
+            aspect='auto', 
+            cmap=cmap, 
+            norm=norm,
+            extent=extent,
+            origin='upper'
+        )
         
-        self.canvas.draw_idle()
+        self.ax.set_xlabel(f"Distance ({'um' if um_px!=1 else 'px'})")
+        self.ax.set_ylabel(f"Time ({'s' if s_frame!=1 else 'frames'})")
+        
+        # 6. 处理 Y 轴范围
+        if not self.var_auto_range.get():
+            try:
+                f_start = self.var_frame_start.get()
+                f_end = self.var_frame_end.get()
+                t_start = f_start * s_frame
+                t_end = f_end * s_frame
+                self.ax.set_ylim(t_end, t_start) 
+            except: pass
+        
+        # 7. Colorbar [完美修复版]
+        # 如果 self.cax (Colorbar的轴) 不存在，则创建一个新的 (只创建一次)
+        if self.cax is None:
+            divider = make_axes_locatable(self.ax)
+            self.cax = divider.append_axes("right", size="5%", pad=0.05)
+        
+        # 清空 cax 里的旧内容，而不是删除 cax 本身
+        self.cax.clear()
+        
+        # 在指定的 cax 上绘制新的 colorbar，这样 ax 就不会被挤压了
+        self.cbar = self.fig.colorbar(self.im_obj, cax=self.cax)
+        
+        self.apply_theme()
 
 
 class RatioAnalyzerApp:
@@ -1353,13 +1468,20 @@ class RatioAnalyzerApp:
 
         roi_id = line_roi['id']
 
-        # 如果窗口已存在且未关闭，直接置顶
+        # 如果窗口已存在，置顶
         if roi_id in self.kymo_windows and self.kymo_windows[roi_id].is_open:
             self.kymo_windows[roi_id].window.lift()
             return
 
         # 创建新窗口
         kymo_win = KymographWindow(self.root, roi_id, self)
+        
+        # [新增] 自动同步主界面的时间间隔
+        try:
+            interval = float(self.var_interval.get())
+            kymo_win.var_s_frame.set(interval)
+        except: pass
+        
         self.kymo_windows[roi_id] = kymo_win
 
         # 立即计算一次数据并显示
@@ -1390,7 +1512,6 @@ class RatioAnalyzerApp:
             else:
                 kymo_final = kymo1
 
-            # [关键] 刷新窗口数据
             self.kymo_windows[roi_id].update_data(kymo_final, self.log_var.get())
 
         except Exception as e:
