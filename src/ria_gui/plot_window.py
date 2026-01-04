@@ -33,6 +33,10 @@ class ROIPlotWindow:
         self.font_size = 10
         self.cached_ylim = None 
         self.current_palette_idx = 0 
+
+        self.preset_grid = True
+        self.preset_lock_y = False
+        self.preset_legend = True
         
         # UI 状态变量
         self.var_grid = None 
@@ -55,6 +59,44 @@ class ROIPlotWindow:
             "plot_fg": "#000000",
             "toolbar_bg": "#F0F0F0"
         }
+
+
+    def get_settings(self):
+        """导出当前窗口的设置状态"""
+        # 如果窗口没开，就只保存基础参数；如果开了，保存 UI 上的实时状态
+        is_open = self.is_open()
+        
+        return {
+            "is_open": is_open,
+            "plot_mode": self.plot_mode,
+            "font_size": self.font_size,
+            "palette_idx": self.current_palette_idx,
+            # 如果变量存在就取变量值，否则取预设值
+            "grid": self.var_grid.get() if self.var_grid else self.preset_grid,
+            "lock_y": self.var_lock_y.get() if self.var_lock_y else self.preset_lock_y,
+            "legend": self.var_legend.get() if self.var_legend else self.preset_legend
+        }
+
+    def apply_settings(self, settings):
+        """应用设置 (在打开窗口前调用)"""
+        if not settings: return
+        
+        self.plot_mode = settings.get("plot_mode", "ratio")
+        self.font_size = settings.get("font_size", 10)
+        self.current_palette_idx = settings.get("palette_idx", 0)
+        
+        # 更新预设值，这样下次 _create_ui 时就会用这些值
+        self.preset_grid = settings.get("grid", True)
+        self.preset_lock_y = settings.get("lock_y", False)
+        self.preset_legend = settings.get("legend", True)
+        
+        # 如果窗口已经开着，直接更新变量并刷新
+        if self.is_open():
+            if self.var_grid: self.var_grid.set(self.preset_grid)
+            if self.var_lock_y: self.var_lock_y.set(self.preset_lock_y)
+            if self.var_legend: self.var_legend.set(self.preset_legend)
+            self._refresh_plot()
+
 
     def is_open(self):
         return self.window is not None and tk.Toplevel.winfo_exists(self.window)
@@ -118,15 +160,18 @@ class ROIPlotWindow:
         self.window = Toplevel(self.parent_root)
         self.window.title("ROI Analysis")
         self.window.geometry("620x630")
+
+        self.mode_buttons = {}
         
         # [修改] 应用当前窗口背景色
         self.window.configure(bg=self.current_theme_colors["bg"])
         
         # 初始化变量
-        if self.var_grid is None: self.var_grid = tk.BooleanVar(value=True)
-        if self.var_lock_y is None: self.var_lock_y = tk.BooleanVar(value=False)
-        if self.var_legend is None: self.var_legend = tk.BooleanVar(value=True)
+        if self.var_grid is None: self.var_grid = tk.BooleanVar(value=self.preset_grid)
+        if self.var_lock_y is None: self.var_lock_y = tk.BooleanVar(value=self.preset_lock_y)
+        if self.var_legend is None: self.var_legend = tk.BooleanVar(value=self.preset_legend)
 
+        
         # 1. 顶部：绘图区
         plot_frame = ttk.Frame(self.window)
         plot_frame.pack(side="top", fill="both", expand=True, padx=5, pady=5)
@@ -251,12 +296,22 @@ class ROIPlotWindow:
         self._update_button_states()
     
     def _update_button_states(self):
+        # 遍历字典时要小心，如果中途字典变了或者组件没了
         for mode, btn in self.mode_buttons.items():
-            if mode == self.plot_mode:
-                btn.state(['pressed']) 
-            else:
-                btn.state(['!pressed'])
+            try:
+                # ✅ [修复] 增加 winfo_exists() 检查，或者直接用 try-except 捕获 TclError
+                if not btn.winfo_exists():
+                    continue
 
+                if mode == self.plot_mode:
+                    btn.state(['pressed']) 
+                else:
+                    btn.state(['!pressed'])
+            except tk.TclError:
+                # 忽略“invalid command name”错误
+                pass
+            except Exception as e:
+                print(f"Button state update error: {e}")
     def _set_mode(self, mode):
         self.plot_mode = mode
         self._refresh_plot()

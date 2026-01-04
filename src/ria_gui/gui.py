@@ -52,7 +52,7 @@ class KymographWindow:
     def __init__(self, master, roi_id, app, title="Kymograph"):
         self.window = Toplevel(master)
         self.window.title(f"{title} - ROI {roi_id}")
-        self.window.geometry("700x550")
+        self.window.geometry("700x650")
         self.roi_id = roi_id
         self.app = app
         
@@ -212,6 +212,44 @@ class KymographWindow:
             self.ent_dist_end.config(state=state)
             
         self.refresh_plot()
+
+    # ✅ [新增] 1. 获取当前窗口的所有设置
+    def get_settings(self):
+        return {
+            "roi_id": self.roi_id,
+            "um_px": self.var_um_px.get(),
+            "s_frame": self.var_s_frame.get(),
+            "frame_start": self.var_frame_start.get(),
+            "frame_end": self.var_frame_end.get(),
+            "auto_range": self.var_auto_range.get(),
+            "cmap": self.var_cmap.get(),
+            "log_scale": self.var_log.get(),
+            "font_size": self.var_plot_font_size.get() if hasattr(self, 'var_plot_font_size') else 10,
+            # 如果有 x 轴范围也加上
+            "dist_start": self.var_dist_start.get() if hasattr(self, 'var_dist_start') else 0,
+            "dist_end": self.var_dist_end.get() if hasattr(self, 'var_dist_end') else 0,
+        }
+
+    # ✅ [新增] 2. 应用设置
+    def apply_settings(self, s):
+        if not s: return
+        self.var_um_px.set(s.get("um_px", 1.0))
+        self.var_s_frame.set(s.get("s_frame", 1.0))
+        self.var_frame_start.set(s.get("frame_start", 0))
+        self.var_frame_end.set(s.get("frame_end", 0))
+        self.var_auto_range.set(s.get("auto_range", True))
+        self.var_cmap.set(s.get("cmap", "jet"))
+        self.var_log.set(s.get("log_scale", False))
+        
+        if hasattr(self, 'var_plot_font_size'):
+            self.var_plot_font_size.set(s.get("font_size", 10))
+            
+        if hasattr(self, 'var_dist_start'):
+            self.var_dist_start.set(s.get("dist_start", 0))
+            self.var_dist_end.set(s.get("dist_end", 0))
+            
+        # 刷新一下界面状态（比如 Auto 勾选后的输入框灰度）
+        self._toggle_range_inputs()
 
     def refresh_plot(self):
         if not self.is_open or self.raw_data is None: return
@@ -2710,6 +2748,16 @@ class RatioAnalyzerApp:
             if self.session.alignment_matrices:
                 matrices_json = [m.tolist() for m in self.session.alignment_matrices]
 
+            # ✅ [新增] 收集绘图窗口状态
+            plot_window_data = {}
+            if self.plot_mgr and self.plot_mgr.plot_window_controller:
+                plot_window_data = self.plot_mgr.plot_window_controller.get_settings()
+
+            kymo_data_list = []
+            for roi_id, win in self.kymo_windows.items():
+                if win.is_open:
+                    kymo_data_list.append(win.get_settings())
+
             # 写入
             project_data = {
                 "version": self.VERSION,
@@ -2721,9 +2769,12 @@ class RatioAnalyzerApp:
                     "is_aligned": (self.session.data1_raw is not None),
                     "matrices": matrices_json
                 },
-                "rois": rois
+                "rois": rois,
+                "plot_window": plot_window_data,  # ✅ [新增] 写入 JSON
+                "kymographs": kymo_data_list
 
             }
+
 
             
             with open(filepath, 'w', encoding='utf-8') as f:
@@ -2874,7 +2925,49 @@ class RatioAnalyzerApp:
 
                     # 5. Restore ROIs (Image data is ready now, masks generate correctly)
                     self.roi_mgr.restore_rois_from_data(rois)
+
+
+                    has_line_roi = any(r['type'] == 'line' for r in self.roi_mgr.roi_list)
+                    if has_line_roi:
+                        self.btn_kymo.config(state="normal") # 强制激活按钮！
+                        # 可选：如果你想把鼠标模式也切回直线，可以用下面这行
+                        # self.shape_var.set("line"); self.roi_mgr.set_mode("line")
                     
+                    # =====================================================
+                    # ✅ [新增] 恢复 Kymograph 窗口
+                    # =====================================================
+                    saved_kymos = data.get("kymographs", [])
+                    for k_settings in saved_kymos:
+                        r_id = k_settings.get("roi_id")
+                        
+                        # 找到对应的 ROI 对象（确保 ID 匹配）
+                        target_roi = next((r for r in self.roi_mgr.roi_list if r['id'] == r_id), None)
+                        
+                        if target_roi:
+                            # 1. 创建窗口
+                            k_win = KymographWindow(self.root, r_id, self)
+                            self.kymo_windows[r_id] = k_win
+                            
+                            # 2. 应用保存的参数
+                            k_win.apply_settings(k_settings)
+                            
+                            # 3. 计算并绘图
+                            self.update_kymograph_for_roi(target_roi)
+                    
+
+                    plot_data = data.get("plot_window", {})
+                    if plot_data and self.plot_mgr and self.plot_mgr.plot_window_controller:
+                        # 1. 应用参数 (模式、字体、网格设置等)
+                        self.plot_mgr.plot_window_controller.apply_settings(plot_data)
+                        
+                        # 2. 如果保存时窗口是打开的，则自动触发计算并显示
+                        if plot_data.get("is_open", False):
+                            # 这里直接调用 plot_roi_curve 即可
+                            # 因为它会触发多线程计算，计算完后自动调用 plot_window.update_data
+                            # 而 update_data 会调用 _create_ui，进而使用我们刚才 apply 的 preset 设置
+                            print("Auto-opening plot window...")
+                            self.plot_roi_curve()
+
                     # 6. Final Refresh
                     saved_view_mode = view.get("view_mode", "ratio")
                     self.set_view_mode(saved_view_mode) 
