@@ -1036,15 +1036,35 @@ class RatioAnalyzerApp:
         self.ui_elements["btn_save_raw"] = self.btn_save_raw
         
         # --- Col 2: Settings ---
-        fr_set = ttk.Frame(grid_area, style="White.TFrame")
-        fr_set.grid(row=0, column=2, sticky="nsew")
+        # [修改] 使用 ToggledFrame 组件，实现"平时隐藏，点三角形展开"的效果
+        # 注意：这里直接使用 ToggledFrame (需确保文件头部已 import)
+        self.fr_settings = ToggledFrame(grid_area, text="⚙ Settings", style="Card.TFrame")
         
-        self.btn_update = ttk.Button(fr_set, text="▶  Settings", command=None, state="disabled", width=12) # Placeholder for settings menu
-        self.btn_update.pack(anchor="ne")
-        self.ui_elements["lbl_settings"] = self.btn_update
-        
-        self.btn_contact = ttk.Button(fr_set, text="📧 Contact Author", command=lambda: webbrowser.open("mailto:kui.wang@cns.ac.cn"))
-        self.btn_contact.pack(side="bottom", anchor="e", pady=2)
+        # sticky="new" (North-East-West) 让它靠上、靠左右撑开，防止展开时位置乱跑
+        self.fr_settings.grid(row=0, column=2, sticky="new", padx=(0, 5))
+
+        # 1. 注册标题到翻译系统
+        # ToggledFrame 的标题 Label 叫 lbl_title
+        self.ui_elements["lbl_settings"] = self.fr_settings.lbl_title
+
+        # 2. 在展开区域 (sub_frame) 添加功能按钮
+
+        # [新增] 按钮 A: 快捷键列表
+        self.btn_shortcuts = ttk.Button(self.fr_settings.sub_frame, text="⌨ Shortcuts", command=self.show_shortcuts_window)
+        self.btn_shortcuts.pack(fill="x", pady=(2, 2), padx=2)
+
+        # 按钮 B: 检查更新 (保留原有的)
+        self.btn_check_update = ttk.Button(self.fr_settings.sub_frame, text="🔄 Check Update", command=self.check_update_thread)
+        self.btn_check_update.pack(fill="x", pady=(0, 2), padx=2)
+        self.ui_elements["btn_check_update"] = self.btn_check_update
+
+        # 按钮 C: 联系作者 (保留原有的)
+        self.btn_contact = ttk.Button(
+            self.fr_settings.sub_frame, 
+            text="📧 Contact Author", 
+            command=lambda: webbrowser.open("https://www.cns.ac.cn") 
+        )
+        self.btn_contact.pack(fill="x", pady=(0, 2), padx=2)
         self.ui_elements["btn_contact"] = self.btn_contact
 
     # [替换原有的 show_kymograph_window 方法]
@@ -1784,7 +1804,7 @@ class RatioAnalyzerApp:
             except: self.fps = 10
 
     def check_update_thread(self):
-        self.btn_update.config(state="disabled")
+        self.btn_check_update.config(state="disabled") 
         threading.Thread(target=self.check_update_task, daemon=True).start()
 
     def check_update_task(self):
@@ -1802,7 +1822,7 @@ class RatioAnalyzerApp:
         except Exception as e:
             self.root.after(0, lambda: messagebox.showerror("Error", f"{self.t('err_check')}{str(e)}"))
         finally:
-            self.thread_safe_config(self.btn_update, state="normal")
+            self.thread_safe_config(self.btn_check_update, state="normal")
 
     def is_newer_version(self, latest, current):
         def parse_ver(v_str):
@@ -1981,6 +2001,53 @@ class RatioAnalyzerApp:
             messagebox.showerror("Load Error", f"Failed to load project:\n{str(e)}")
             import traceback
             traceback.print_exc()
+
+    def show_shortcuts_window(self):
+        """显示快捷键列表弹窗"""
+        # 创建弹窗
+        win = Toplevel(self.root)
+        win.title("Keyboard Shortcuts")
+        win.geometry("380x280")
+        win.transient(self.root) # 设置为子窗口
+        
+        # 居中显示
+        try:
+            x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 190
+            y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 140
+            win.geometry(f"+{x}+{y}")
+        except: pass
+
+        # 标题
+        ttk.Label(win, text="⌨ Keyboard Shortcuts", font=("Segoe UI", 12, "bold")).pack(pady=(15, 10))
+
+        # 内容容器
+        f_table = ttk.Frame(win, padding=10)
+        f_table.pack(fill="both", expand=True)
+
+        # 定义快捷键列表
+        shortcuts = [
+            ("Ctrl + T", "Start Drawing New ROI (新建ROI)"),
+            ("Ctrl + P", "Plot Curve (生成曲线)"),
+            ("Ctrl + L", "Toggle Live Monitor (实时监测)"),
+            ("Esc",      "Cancel Drawing (取消绘制)"),
+            ("Space",    "Pause/Play Video (暂停/播放)"), # 如果你绑定了空格键的话，没绑定可以不写
+        ]
+
+        # 渲染列表
+        for key, desc in shortcuts:
+            row = ttk.Frame(f_table)
+            row.pack(fill="x", pady=4)
+            
+            # 快捷键 (蓝色代码字体)
+            ttk.Label(row, text=key, font=("Consolas", 10, "bold"), 
+                      foreground="#007acc", width=12, anchor="e").pack(side="left", padx=(0, 10))
+            
+            # 说明文字
+            ttk.Label(row, text=desc, anchor="w").pack(side="left", fill="x", expand=True)
+
+        # 底部关闭按钮
+        ttk.Button(win, text="Close", command=win.destroy, width=10).pack(pady=15)
+
 
 if __name__ == "__main__":
     root = tk.Tk()
