@@ -46,13 +46,13 @@ warnings.filterwarnings('ignore')
 
 
 class KymographWindow:
-    def __init__(self, master, roi_id, title="Kymograph"):
+    def __init__(self, master, roi_id, app, title="Kymograph"): # [修改] 增加 app 参数
         self.window = Toplevel(master)
         self.window.title(f"{title} - ROI {roi_id}")
         self.window.geometry("600x400")
         self.roi_id = roi_id
+        self.app = app # [新增] 保存 App 引用以获取主题颜色
         
-        # 标志位：窗口关闭时自动置为 False
         self.is_open = True
         self.window.protocol("WM_DELETE_WINDOW", self.on_close)
         
@@ -62,12 +62,53 @@ class KymographWindow:
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.window)
         self.canvas.get_tk_widget().pack(side="top", fill="both", expand=True)
         
-        # 缓存图像对象，用于 set_data 优化性能
         self.im_obj = None 
+        self.cbar = None # [新增] 保存 Colorbar 引用
+        
+        # [新增] 初始应用当前主题
+        self.apply_theme()
 
     def on_close(self):
         self.is_open = False
         self.window.destroy()
+
+    def apply_theme(self):
+        """
+        [新增] 应用当前 App 主题颜色到 Kymograph 窗口
+        """
+        if not self.window.winfo_exists(): return
+        
+        try:
+            # 1. 获取颜色
+            mode = self.app.current_theme
+            c = self.app.THEME_COLORS[mode]
+            bg, fg = c["plot_bg"], c["plot_fg"]
+            
+            # 2. 设置窗口背景
+            self.window.configure(bg=c["bg"])
+            
+            # 3. 设置绘图区背景
+            self.fig.patch.set_facecolor(bg)
+            self.ax.set_facecolor(bg)
+            
+            # 4. 设置坐标轴颜色 (Spines, Ticks, Labels)
+            for spine in self.ax.spines.values():
+                spine.set_color(fg)
+            self.ax.xaxis.label.set_color(fg)
+            self.ax.yaxis.label.set_color(fg)
+            self.ax.tick_params(axis='x', colors=fg)
+            self.ax.tick_params(axis='y', colors=fg)
+            self.ax.title.set_color(fg)
+            
+            # 5. 设置 Colorbar 颜色 (如果存在)
+            if self.cbar:
+                self.cbar.ax.yaxis.set_tick_params(color=fg, labelcolor=fg)
+                self.cbar.ax.yaxis.label.set_color(fg)
+            
+            self.canvas.draw_idle()
+            
+        except Exception as e:
+            print(f"Kymo Theme Error: {e}")
 
     def update_data(self, data, is_log=False):
         if not self.is_open: return
@@ -82,14 +123,15 @@ class KymographWindow:
             
             self.ax.set_xlabel("Distance (px)")
             self.ax.set_ylabel("Time (frames)")
-            self.fig.colorbar(self.im_obj, ax=self.ax)
+            
+            # [修改] 保存 colorbar 引用并立即应用主题
+            self.cbar = self.fig.colorbar(self.im_obj, ax=self.ax)
+            self.apply_theme() 
         
-        # 2. 后续更新 (极速刷新)
+        # 2. 后续更新
         else:
             self.im_obj.set_data(data)
-            # 自动调整颜色范围 (可选，如果不想闪烁可以去掉)
             self.im_obj.set_clim(vmin=np.nanmin(data), vmax=np.nanmax(data))
-            # 必须重新设置 extent 或 limit，因为线条长度可能变了
             self.im_obj.set_extent((0, data.shape[1], data.shape[0], 0))
             self.ax.relim()
             self.ax.autoscale_view()
@@ -97,12 +139,37 @@ class KymographWindow:
         self.canvas.draw_idle()
 
 
-
-
 class RatioAnalyzerApp:
     def __init__(self, root, startup_file=None):
         self.root = root
-        
+        self.current_theme = "light"
+
+        # [新增] 定义两套颜色方案
+        self.THEME_COLORS = {
+            "light": {
+                "bg": "#F0F2F5", 
+                "card": "#FFFFFF", 
+                "text": "#000000",             # 白天：纯黑文字
+                "fg_disabled": "#A0A0A0",
+                "input_bg": "#FFFFFF",
+                "accent": "#0056b3",           # 白天：深蓝强调
+                "plot_bg": "#FFFFFF", 
+                "plot_fg": "#000000",
+                "toolbar_bg": "#F0F0F0"
+            },
+            "dark": {
+                "bg": "#2D2D2D",               # 深灰背景
+                "card": "#383838",             # 卡片背景
+                "text": "#FFFFFF",             # [核心修改] 纯白文字 (对比度最高)
+                "fg_disabled": "#AAAAAA",      # [核心修改] 亮灰禁用字 (防止看不清)
+                "input_bg": "#454545",         # 输入框背景
+                "accent": "#4DA6FF",           # 亮蓝强调 (保持蓝色定义)
+                "plot_bg": "#383838",          # 绘图背景
+                "plot_fg": "#FFFFFF",          # [核心修改] 绘图文字纯白
+                "toolbar_bg": "#BCBCBC"        # 工具栏背景
+            }
+        }
+
         # --- Font Init ---
         self.base_font_size = 10
         self.current_font_size = self.base_font_size
@@ -114,7 +181,7 @@ class RatioAnalyzerApp:
         self._resize_timer = None
 
         # --- Theme ---
-        self.setup_theme()
+        self.setup_theme(self.current_theme)
         
         self.VERSION = __version__
         self.current_lang = "en"
@@ -324,62 +391,123 @@ class RatioAnalyzerApp:
         except Exception as e:
             print(f"UI Update Error: {e}")
 
-    def setup_theme(self):
+    def setup_theme(self, mode="light"):
+        """
+        根据 mode ("light" or "dark") 设置全局样式。
+        """
         style = ttk.Style()
         try: style.theme_use('clam')
         except: pass
         
-        BG_COLOR = "#F0F2F5"
-        CARD_COLOR = "#FFFFFF"
-        TEXT_COLOR = "#333333"
-        BLUE_COLOR = "#0056b3"
-        GREEN_COLOR = "#28a745"
+        c = self.THEME_COLORS[mode]
         
-        style.configure(".", background=BG_COLOR, foreground=TEXT_COLOR, font=self.f_normal)
-        style.configure("TLabel", background=BG_COLOR, font=self.f_normal)
-        style.configure("TButton", padding=5, font=self.f_normal) 
-        style.configure("TCheckbutton", font=self.f_normal)
-        style.configure("TRadiobutton", font=self.f_normal)
-        style.configure("TEntry", font=self.f_normal, padding=2)
-        style.configure("TCombobox", font=self.f_normal, padding=2)
-        style.configure("TSpinbox", font=self.f_normal, padding=2)
+        # 1. 更新主窗口背景
+        self.root.configure(bg=c["bg"])
         
-        style.configure("Card.TFrame", background=CARD_COLOR, relief="flat")
-        style.configure("Card.TLabelframe", background=CARD_COLOR, relief="solid", borderwidth=1)
-        style.configure("Card.TLabelframe.Label", background=CARD_COLOR, foreground=BLUE_COLOR, font=self.f_bold)
-        style.configure("Header.TFrame", background=CARD_COLOR)
-        style.configure("White.TLabel", background=CARD_COLOR, font=self.f_normal)
-        style.configure("White.TCheckbutton", background=CARD_COLOR, font=self.f_normal)
-        style.configure("White.TRadiobutton", background=CARD_COLOR, font=self.f_normal)
-        style.configure("White.TFrame", background=CARD_COLOR)
-        style.configure("Blue.TLabel", foreground=BLUE_COLOR, font=self.f_bold)
+        # 2. 配置下拉菜单 (Listbox) 颜色
+        self.root.option_add('*TCombobox*Listbox.background', c["card"])
+        self.root.option_add('*TCombobox*Listbox.foreground', c["text"])
+        self.root.option_add('*TCombobox*Listbox.selectBackground', c["accent"])
+        self.root.option_add('*TCombobox*Listbox.selectForeground', "white")
+
+        # 3. 配置通用样式
+        style.configure(".", background=c["bg"], foreground=c["text"], font=self.f_normal)
+        style.configure("TLabel", background=c["bg"], foreground=c["text"])
+        style.configure("TButton", background=c["card"], foreground=c["text"], borderwidth=1)
         
-        style.configure("Toggle.TButton", font=self.f_normal, background="#FFFFFF", borderwidth=1, padding=5)
+        # 状态映射
+        style.map("TButton", foreground=[("disabled", c["fg_disabled"])])
+        style.map("TLabel", foreground=[("disabled", c["fg_disabled"])])
+        style.map("TCheckbutton", foreground=[("disabled", c["fg_disabled"])])
+        
+        # 输入框
+        style.configure("TEntry", fieldbackground=c["input_bg"], foreground=c["text"], insertcolor=c["text"])
+        style.configure("TSpinbox", fieldbackground=c["input_bg"], foreground=c["text"], arrowcolor=c["text"])
+        
+        # 下拉框
+        style.configure("TCombobox", fieldbackground=c["input_bg"], foreground=c["text"], background=c["card"], arrowcolor=c["text"])
+        style.map("TCombobox", fieldbackground=[("readonly", c["input_bg"])], foreground=[("disabled", c["fg_disabled"])])
+
+        # 卡片容器
+        style.configure("Card.TFrame", background=c["card"])
+        style.configure("Card.TLabelframe", background=c["card"], foreground=c["text"])
+        style.configure("Card.TLabelframe.Label", background=c["card"], foreground=c["accent"], font=self.f_bold)
+        
+        # 头部样式 (Header)
+        style.configure("Header.TFrame", background=c["card"])
+        
+        # [核心修改] 标题专用样式 (Title.TLabel)
+        # 1. 背景色设为 c["card"]，与 Header 背景融合，实现“伪透明”
+        # 2. 前景色：浅色模式用深蓝灰(#2c3e50)显得专业，深色模式用纯白(#FFFFFF)
+        title_fg = "#2c3e50" if mode == "light" else "#FFFFFF"
+        style.configure("Title.TLabel", background=c["card"], foreground=title_fg)
+
+        # 白色背景组件适配
+        style.configure("White.TFrame", background=c["card"])
+        style.configure("White.TLabel", background=c["card"], foreground=c["text"])
+        style.configure("White.TCheckbutton", background=c["card"], foreground=c["text"])
+        style.configure("White.TRadiobutton", background=c["card"], foreground=c["text"])
+        
+        # Toggle 按钮
+        style.configure("Toggle.TButton", background=c["card"], foreground=c["text"])
         style.map("Toggle.TButton", 
-            background=[("selected", "#E8F0FE"), ("disabled", "#E0E0E0"), ("active", "#F5F5F5")], 
-            foreground=[("selected", BLUE_COLOR), ("disabled", "#A0A0A0")], 
-            relief=[("selected", "sunken"), ("!selected", "raised")]
+            background=[("selected", c["accent"]), ("active", c["input_bg"])], 
+            foreground=[("selected", "white"), ("disabled", c["fg_disabled"])]
         )
-        style.configure("Starred.TButton", font=self.f_normal, foreground="#F5C518")
-        style.configure("Compact.TButton", font=self.f_normal, padding=5, width=3) 
-        style.configure("Gray.TButton", font=self.f_normal, background="#E0E0E0", foreground="#555555")
-        style.configure("Success.TButton", font=self.f_bold, foreground="#28a745") 
-        style.configure("Toolbutton", background=CARD_COLOR, relief="flat", borderwidth=0, padding=4)
-        style.map("Toolbutton", background=[("selected", "#E8F0FE")], relief=[("selected", "sunken")])
         
-        style.configure("BadgeBlue.TLabel", background=BLUE_COLOR, foreground="white", font=("Segoe UI", 9, "bold"), padding=(8, 2))
-        style.configure("BadgeGreen.TLabel", background=GREEN_COLOR, foreground="white", font=("Segoe UI", 9, "bold"), padding=(8, 2))
+        # 灰色按钮
+        style.configure("Gray.TButton", background=c["input_bg"], foreground=c["fg_disabled"])
+        style.map("Gray.TButton", foreground=[("active", c["text"])])
 
-        # [新增] 橙色徽章用于 Z-Stack
-        style.configure("BadgeOrange.TLabel", background="#fd7e14", foreground="white", font=("Segoe UI", 9, "bold"), padding=(8, 2))
+        # 工具按钮
+        style.configure("Toolbutton", background=c["card"], foreground=c["text"])
+        style.map("Toolbutton", background=[("selected", c["input_bg"])], foreground=[("selected", c["accent"])])
+        
+        # 徽章
+        style.configure("BadgeOrange.TLabel", background="#fd7e14", foreground="white")
+        style.configure("BadgeBlue.TLabel", background=c["accent"], foreground="white")
+        style.configure("BadgeGreen.TLabel", background="#28a745", foreground="white")
 
-        style.configure("Blue.Toolbutton", background=CARD_COLOR, relief="flat", borderwidth=0, padding=4, foreground="#007acc", font=("Segoe UI", 10, "bold"))
-        style.map("Blue.Toolbutton", background=[("selected", "#E8F0FE")], relief=[("selected", "sunken")], foreground=[("selected", "#0056b3"), ("!selected", "#007acc")])
-
-        style.configure("Blue.TButton", font=self.f_normal, foreground="#007acc")
-        style.map("Blue.TButton", foreground=[("disabled", "#A0A0A0"), ("!disabled", "#007acc")])
+        # 特殊蓝色文本
+        style.configure("Blue.TLabel", foreground=c["accent"])
+        style.configure("Blue.TButton", foreground=c["accent"])
+        style.configure("Blue.Toolbutton", foreground=c["accent"])
 
         self.style = style
+
+
+
+
+
+    def toggle_theme(self):
+        # 1. 切换状态
+        self.current_theme = "dark" if self.current_theme == "light" else "light"
+        
+        # 2. 刷新 Tkinter 样式
+        self.setup_theme(self.current_theme)
+        
+        # 3. 刷新 Matplotlib 图表颜色
+        if self.plot_mgr:
+            c = self.THEME_COLORS[self.current_theme]
+            self.plot_mgr.apply_theme(c["plot_bg"], c["plot_fg"])
+            
+            if self.plot_mgr.plot_window_controller:
+                self.plot_mgr.plot_window_controller.apply_theme(c)
+            
+            if self.data1 is not None:
+                self.update_plot()
+            else:
+                logo_path = self.get_asset_path("app_ico.png")
+                self.plot_mgr.show_logo(logo_path)
+
+        # [新增] 4. 刷新所有打开的 Kymograph 窗口
+        for k_id, k_win in self.kymo_windows.items():
+            if k_win.is_open:
+                k_win.apply_theme()
+
+        # 5. 更新按钮文字
+        btn_text = "☀️" if self.current_theme == "dark" else "🌙"
+        self.btn_theme.config(text=btn_text)
 
 
     def get_asset_path(self, filename):
@@ -457,22 +585,42 @@ class RatioAnalyzerApp:
         self.btn_github.config(text="★ GitHub", style="Starred.TButton")
 
     def setup_ui_skeleton(self):
+        # Header 容器使用 Header.TFrame 样式 (背景色=card)
         header = ttk.Frame(self.root, padding="15 10", style="Header.TFrame")
         header.pack(fill="x")
-        self.lbl_title = ttk.Label(header, text="RIA", font=self.f_title, background="#FFFFFF", foreground="#2c3e50")
+        
+        # [修改] 移除硬编码颜色，应用 Title.TLabel 样式
+        # 这样它的背景色就会自动变成 Header 的颜色，看起来就是透明的
+        self.lbl_title = ttk.Label(header, text="RIA", font=self.f_title, style="Title.TLabel")
         self.lbl_title.pack(side="left")
+        
         self.ui_elements["header_title"] = self.lbl_title
-        btn_frame = ttk.Frame(header, style="Header.TFrame"); btn_frame.pack(side="right")
+        
+        # 右侧按钮区
+        btn_frame = ttk.Frame(header, style="Header.TFrame")
+        btn_frame.pack(side="right")
+        
+        # 字体调整按钮
         ttk.Button(btn_frame, text="A+", width=3, command=lambda: self.change_font_size(1)).pack(side="right", padx=2)
         ttk.Button(btn_frame, text="⟳", width=3, command=self.reset_font_size).pack(side="right", padx=2)
         ttk.Button(btn_frame, text="A-", width=3, command=lambda: self.change_font_size(-1)).pack(side="right", padx=2)
+        
+        # GitHub 按钮
         self.btn_github = ttk.Button(btn_frame, text="☆ GitHub", command=self.star_github)
         self.btn_github.pack(side="right", padx=10)
+        
+        # 语言切换 & 主题切换按钮
         ttk.Button(btn_frame, text="🌐 EN/中文", command=self.toggle_language).pack(side="right", padx=2)
         
+        # [新增] 主题切换按钮 (记得保留这个我们之前加的按钮)
+        self.btn_theme = ttk.Button(btn_frame, text="🌙", width=3, command=self.toggle_theme)
+        self.btn_theme.pack(side="right", padx=(2, 10))
+        
+        # 主布局分割窗口
         self.main_pane = ttk.PanedWindow(self.root, orient="horizontal")
         self.main_pane.pack(fill="both", expand=True, padx=10, pady=10)
 
+        # 左侧面板
         self.frame_left_container = ttk.Frame(self.main_pane, style="Card.TFrame", padding=10)
         self.main_pane.add(self.frame_left_container, weight=0)
         
@@ -485,13 +633,15 @@ class RatioAnalyzerApp:
         self.setup_view_group()      # 4. Display Settings
         self.setup_brand_logo()
 
+        # 右侧面板
         self.frame_right = ttk.Frame(self.main_pane, style="Card.TFrame", padding=10)
         self.main_pane.add(self.frame_right, weight=1)
 
-        # [新增] 通道选择栏 (Channel Bar) - 放在 Plot Container 上方
+        # 通道选择栏
         self.frame_channels = ttk.Frame(self.frame_right, style="White.TFrame")
         self.frame_channels.pack(side="top", fill="x", pady=(0, 5))
 
+        # 绘图容器
         self.plot_container = ttk.Frame(self.frame_right, style="White.TFrame")
         self.plot_container.pack(side="top", fill="both", expand=True)
         
@@ -499,6 +649,7 @@ class RatioAnalyzerApp:
         self.lbl_loading.place(relx=0.5, rely=0.5, anchor="center")
 
         self.create_bottom_panel(self.frame_right)
+
 
     def load_graphics_engine(self):
         try:
@@ -559,30 +710,33 @@ class RatioAnalyzerApp:
         f_opts = ttk.Frame(self.tab_dual, style="White.TFrame")
         f_opts.pack(fill="x", pady=(2, 0))
         
+        # [左侧区域] Axes 输入
         ttk.Label(f_opts, text="Axes:", style="White.TLabel", foreground="gray").pack(side="left")
         
-        # [修改] 定义变量并绑定监听
+        # 定义变量并绑定监听
         self.var_axes_entry = tk.StringVar(value="?")
-        # 核心：一旦变量内容改变（无论是代码set的，还是用户敲键盘改的），都触发 _on_axes_change
         self.var_axes_entry.trace_add("write", self._on_axes_change) 
         
         self.entry_axes = ttk.Entry(f_opts, textvariable=self.var_axes_entry, width=7, font=("Segoe UI", 8))
         self.entry_axes.pack(side="left", padx=(2, 8))
         
-        # 添加一个 Tooltip 或者回车绑定（可选，这里绑定回车触发重读，或者不做也行，反正Load时会读取）
-        # self.entry_axes.bind("<Return>", lambda e: self.focus()) 
+        # [右侧区域] 创建一个容器并将其 push 到右边 (side="right")
+        f_right = ttk.Frame(f_opts, style="White.TFrame")
+        f_right.pack(side="right")
 
+        # 在右侧容器内，控件依然是从左往右排 (side="left")
+        
         # Interleaved Checkbox
-        self.chk_inter = ttk.Checkbutton(f_opts, variable=self.is_interleaved_var, style="Toggle.TButton")
+        self.chk_inter = ttk.Checkbutton(f_right, variable=self.is_interleaved_var, style="Toggle.TButton")
         self.chk_inter.pack(side="left")
         self.ui_elements["chk_interleaved"] = self.chk_inter
         
         # Channel Count
-        self.lbl_ch_count = ttk.Label(f_opts, text="Ch Count:", style="White.TLabel")
+        self.lbl_ch_count = ttk.Label(f_right, text="Ch Count:", style="White.TLabel")
         self.lbl_ch_count.pack(side="left", padx=(10, 2))
         
         self.var_n_channels = tk.IntVar(value=2)
-        self.sp_channels = ttk.Spinbox(f_opts, from_=1, to=20, textvariable=self.var_n_channels, width=3)
+        self.sp_channels = ttk.Spinbox(f_right, from_=1, to=20, textvariable=self.var_n_channels, width=3)
         self.sp_channels.pack(side="left")
 
         # === Tab 2 & 3 (保持不变) ===
@@ -606,11 +760,12 @@ class RatioAnalyzerApp:
         f_actions.pack(fill="x", pady=(10, 0))
         
         # 1. Z-Projection 控件
-        self.lbl_z_proj = ttk.Label(f_actions, text="Z-Proj:", state="disabled", style="White.TLabel")
+        self.lbl_z_proj = ttk.Label(f_actions, text="Z-Proj:", state="disabled", foreground="#A0A0A0", style="White.TLabel")
         self.lbl_z_proj.pack(side="left", padx=(0, 2))
         
-        self.z_proj_var = tk.StringVar(value="Ave (AIP)")
-        # 依然保留 None 选项，作为双重保险
+        # 初始值为空，避免黑色文字干扰
+        self.z_proj_var = tk.StringVar(value="") 
+        
         self.combo_z_proj = ttk.Combobox(f_actions, textvariable=self.z_proj_var, 
                                          values=["Max (MIP)", "Ave (AIP)", "None (Treat as T)"], 
                                          state="disabled", width=14, font=("Segoe UI", 8))
@@ -629,6 +784,9 @@ class RatioAnalyzerApp:
         # 3. 清除按钮
         self.btn_clear_data = ttk.Button(f_actions, text="🗑", width=4, command=self.clear_all_data, style="Gray.TButton")
         self.btn_clear_data.pack(side="right", fill="y")
+
+
+
 
     def _on_axes_change(self, *args):
         """
@@ -1201,7 +1359,7 @@ class RatioAnalyzerApp:
             return
 
         # 创建新窗口
-        kymo_win = KymographWindow(self.root, roi_id)
+        kymo_win = KymographWindow(self.root, roi_id, self)
         self.kymo_windows[roi_id] = kymo_win
 
         # 立即计算一次数据并显示

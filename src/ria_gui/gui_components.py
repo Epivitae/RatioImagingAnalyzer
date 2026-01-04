@@ -56,18 +56,85 @@ class PlotManager:
         self.cbar = None
         self.toolbar = None
 
+
+    def apply_theme(self, bg_color, fg_color):
+        """
+        [新增] 动态切换 Matplotlib 的颜色主题
+        """
+        # 1. 设置 Figure 背景
+        self.fig.patch.set_facecolor(bg_color)
+        
+        # 2. 设置 Axes 背景和边框
+        self.ax.set_facecolor(bg_color)
+        self.ax.spines['bottom'].set_color(fg_color)
+        self.ax.spines['top'].set_color(fg_color) 
+        self.ax.spines['left'].set_color(fg_color)
+        self.ax.spines['right'].set_color(fg_color)
+        
+        # 3. 设置文字和刻度颜色
+        self.ax.xaxis.label.set_color(fg_color)
+        self.ax.yaxis.label.set_color(fg_color)
+        self.ax.tick_params(axis='x', colors=fg_color)
+        self.ax.tick_params(axis='y', colors=fg_color)
+        self.ax.title.set_color(fg_color)
+        
+        # 4. 如果有 Colorbar，也要处理 (比较麻烦，通常重建比较好，或者只改 Label)
+        if self.cbar:
+            self.cbar.ax.yaxis.set_tick_params(color=fg_color, labelcolor=fg_color)
+            self.cbar.ax.yaxis.label.set_color(fg_color)
+        
+        # 5. [修改] 更新 Toolbar 背景
+        # 我们不使用传入的 plot_bg (太黑了)，而是去 app 里拿 toolbar_bg
+        if self.toolbar:
+            try:
+                mode = self.app.current_theme
+                c = self.app.THEME_COLORS[mode]
+                tb_bg = c.get("toolbar_bg", "#F0F0F0")
+                
+                self.toolbar.config(background=tb_bg)
+                # 坐标显示区域
+                self.toolbar._message_label.config(background=tb_bg, foreground="black")
+            except: pass
+
+        self.canvas.draw_idle()
+
+
+
     def add_toolbar(self, parent_frame):
+        # ... (前两行不变) ...
         for child in parent_frame.winfo_children():
             child.destroy()
+            
         self.toolbar = NavigationToolbar2Tk(self.canvas, parent_frame)
-        self.toolbar.config(background="#FFFFFF")
-        self.toolbar._message_label.config(background="#FFFFFF")
+        
+        # [修改] 初始加载时应用当前主题颜色
+        try:
+            # 获取当前主题颜色
+            mode = self.app.current_theme
+            c = self.app.THEME_COLORS[mode]
+            bg_color = c.get("toolbar_bg", "#F0F0F0") # 使用专门定义的 toolbar_bg
+            fg_color = c["plot_fg"]
+            
+            self.toolbar.config(background=bg_color)
+            self.toolbar._message_label.config(background=bg_color, foreground="black") # 消息文字始终黑
+        except:
+            # 降级处理
+            self.toolbar.config(background="#F0F0F0")
+            
         self.toolbar.update()
 
     def show_logo(self, logo_path):
         self.fig.clear() 
         self.ax = self.fig.add_subplot(111)
         self.ax.axis('off')
+
+        try:
+            mode = self.app.current_theme
+            c = self.app.THEME_COLORS[mode]
+            self.fig.patch.set_facecolor(c["plot_bg"])
+        except: pass
+
+
         self.im_object = None
         self.cbar = None
         if logo_path and os.path.exists(logo_path):

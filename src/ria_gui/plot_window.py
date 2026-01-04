@@ -10,9 +10,9 @@ COLOR_PALETTES = {
     "Standard": ['#FF3333', '#33FF33', '#3388FF', '#FFFF33', '#FF33FF', '#33FFFF', '#FF8833'], # 经典亮色
     "Deep":     ['#D62728', '#2CA02C', '#1F77B4', '#FF7F0E', '#9467BD', '#8C564B', '#E377C2'], # 深沉 (Matplotlib默认)
     "Paper":    ['#000000', '#E69F00', '#56B4E9', '#009E73', '#F0E442', '#0072B2', '#D55E00'], # 论文专用 (色盲友好)
-    "Magenta":  ['#8B008B', '#FF00FF', '#BA55D3', '#9370DB', '#4B0082', '#C71585', '#DB7093'], # [New] 洋红/紫色系
-    "Ocean":    ['#000080', '#0000CD', '#4169E1', '#1E90FF', '#00BFFF', '#20B2AA', '#5F9EA0'], # [New] 海洋蓝系
-    "Sunset":   ['#FF4500', '#FF8C00', '#FFD700', '#C71585', '#6A5ACD', '#DC143C'],           # [New] 落日暖色
+    "Magenta":  ['#8B008B', '#FF00FF', '#BA55D3', '#9370DB', '#4B0082', '#C71585', '#DB7093'], # 洋红/紫色系
+    "Ocean":    ['#000080', '#0000CD', '#4169E1', '#1E90FF', '#00BFFF', '#20B2AA', '#5F9EA0'], # 海洋蓝系
+    "Sunset":   ['#FF4500', '#FF8C00', '#FFD700', '#C71585', '#6A5ACD', '#DC143C'],           # 落日暖色
     "Gray":     ['#000000', '#555555', '#888888', '#BBBBBB']                                   # 灰度
 }
 PALETTE_NAMES = list(COLOR_PALETTES.keys())
@@ -34,7 +34,7 @@ class ROIPlotWindow:
         self.cached_ylim = None 
         self.current_palette_idx = 0 
         
-        # 使用 BooleanVar 绑定 UI 状态
+        # UI 状态变量
         self.var_grid = None 
         self.var_lock_y = None
         self.var_legend = None 
@@ -44,11 +44,17 @@ class ROIPlotWindow:
         self.ax = None
         self.ax_right = None
         self.canvas = None
-
-        # [新增] 动态按钮容器引用
+        self.toolbar = None          # [新增] 保存工具栏引用
         self.fr_view_inner = None
-        self.mode_buttons = {} # 存储按钮引用 {mode_key: button_widget}
+        self.mode_buttons = {} 
 
+        # [新增] 默认主题颜色 (浅色)
+        self.current_theme_colors = {
+            "bg": "#F0F2F5", 
+            "plot_bg": "#FFFFFF", 
+            "plot_fg": "#000000",
+            "toolbar_bg": "#F0F0F0"
+        }
 
     def is_open(self):
         return self.window is not None and tk.Toplevel.winfo_exists(self.window)
@@ -56,6 +62,37 @@ class ROIPlotWindow:
     def focus(self):
         if self.is_open():
             self.window.lift()
+
+    def apply_theme(self, colors):
+        """
+        [新增] 接收来自主程序的颜色字典，更新窗口和绘图样式。
+        colors: dict, e.g. {"bg":..., "text":..., "plot_bg":..., "plot_fg":...}
+        """
+        # 1. 保存颜色配置 (以便下次 _create_ui 或 _refresh_plot 时使用)
+        self.current_theme_colors = colors
+
+        # 2. 如果窗口开着，立即刷新
+        if self.is_open():
+            # A. 窗口背景
+            self.window.configure(bg=colors["bg"])
+            
+            # B. Matplotlib Figure & Axes
+            if self.fig:
+                bg = colors["plot_bg"]
+                fg = colors["plot_fg"]
+                
+                self.fig.patch.set_facecolor(bg)
+                
+                # 刷新图表内容 (这会自动重新应用坐标轴颜色)
+                self._refresh_plot()
+            
+            # C. Toolbar 背景 (防止黑色图标看不见)
+            if self.toolbar:
+                tb_bg = colors.get("toolbar_bg", "#F0F0F0")
+                try:
+                    self.toolbar.config(background=tb_bg)
+                    self.toolbar._message_label.config(background=tb_bg, foreground="black") # 坐标信息始终黑字
+                except: pass
 
     def update_data(self, x, series_list, unit, is_log, do_norm, channel_info):
         """
@@ -67,7 +104,7 @@ class ROIPlotWindow:
             "unit": unit,
             "is_log": is_log,
             "do_norm": do_norm,
-            "info": channel_info # 存储完整的 info
+            "info": channel_info
         }
         
         if not self.is_open():
@@ -77,12 +114,13 @@ class ROIPlotWindow:
         self._rebuild_channel_buttons()
         self._refresh_plot()
 
-
-
     def _create_ui(self):
         self.window = Toplevel(self.parent_root)
         self.window.title("ROI Analysis")
-        self.window.geometry("620x630") # 稍微加宽
+        self.window.geometry("620x630")
+        
+        # [修改] 应用当前窗口背景色
+        self.window.configure(bg=self.current_theme_colors["bg"])
         
         # 初始化变量
         if self.var_grid is None: self.var_grid = tk.BooleanVar(value=True)
@@ -94,14 +132,22 @@ class ROIPlotWindow:
         plot_frame.pack(side="top", fill="both", expand=True, padx=5, pady=5)
         
         self.fig = plt.Figure(figsize=(5, 4), dpi=100)
-        self.fig.patch.set_facecolor('#FFFFFF')
+        
+        # [修改] 应用当前绘图背景色
+        self.fig.patch.set_facecolor(self.current_theme_colors["plot_bg"])
+        
         self.ax = self.fig.add_subplot(111)
+        self.ax.set_facecolor(self.current_theme_colors["plot_bg"])
         
         self.canvas = FigureCanvasTkAgg(self.fig, master=plot_frame)
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
         
-        toolbar = NavigationToolbar2Tk(self.canvas, plot_frame)
-        toolbar.update()
+        # [修改] 创建并配置 Toolbar
+        self.toolbar = NavigationToolbar2Tk(self.canvas, plot_frame)
+        tb_bg = self.current_theme_colors.get("toolbar_bg", "#F0F0F0")
+        self.toolbar.config(background=tb_bg)
+        self.toolbar._message_label.config(background=tb_bg, foreground="black")
+        self.toolbar.update()
         
         # 2. 底部：控制面板区 (Main Container)
         ctrl_frame = ttk.Frame(self.window, padding=5)
@@ -114,7 +160,6 @@ class ROIPlotWindow:
         fr_view = ttk.LabelFrame(row1, text="View Channels", padding=5)
         fr_view.pack(side="left", fill="x", expand=True) 
         
-        # [修改] 仅创建一个空容器，按钮由 _rebuild_channel_buttons 填充
         self.fr_view_inner = ttk.Frame(fr_view)
         self.fr_view_inner.pack(anchor="center", fill="x")
 
@@ -151,15 +196,15 @@ class ROIPlotWindow:
                                         command=lambda: self._copy_data(with_time=True))
         self.btn_copy_time.pack(side="left", padx=3)
         
-        # 按钮 2: 纯数据 (Data Only)
         self.btn_copy_data = ttk.Button(fr_data_inner, text="📉 Data Only", width=14, 
                                         command=lambda: self._copy_data(with_time=False))
         self.btn_copy_data.pack(side="left", padx=3)
 
-
+        # 首次创建时应用颜色
+        self.apply_theme(self.current_theme_colors)
 
     def _rebuild_channel_buttons(self):
-        """[核心] 根据数据动态生成通道按钮"""
+        """根据数据动态生成通道按钮"""
         if not self.data_cache or not self.fr_view_inner: return
         
         # 1. 清除旧按钮
@@ -199,11 +244,11 @@ class ROIPlotWindow:
         btn_color = ttk.Button(self.fr_view_inner, text="🎨 Color", width=8, style="Compact.TButton", command=self._cycle_palette)
         btn_color.pack(side="left", padx=2)
 
-        # 6. 状态检查与刷新
+        # 6. 状态检查
         if self.plot_mode == "ratio" and not has_ratio:
-            self.plot_mode = "num" # 单通道没有 Ratio，回退到 num
+            self.plot_mode = "num"
         
-        self._update_button_states() # 更新按钮高亮 (需要把 _refresh_plot 里的高亮逻辑挪到这里或新建函数)
+        self._update_button_states()
     
     def _update_button_states(self):
         for mode, btn in self.mode_buttons.items():
@@ -239,40 +284,60 @@ class ROIPlotWindow:
         is_log = d['is_log']; do_norm = d['do_norm']
         info = d['info']
         
-        labels = info.get("labels", ("Ch1", "Ch2"))
-        label_num, label_den = labels[0], labels[1]
-        
-        # 更新按钮状态高亮
         self._update_button_states()
 
-        # 清理绘图
+        # 1. 清空 Axes
         self.ax.clear()
         if self.ax_right:
             self.ax_right.remove()
             self.ax_right = None
 
+        # 2. [关键] 恢复坐标轴颜色 (clear会重置样式，必须重设)
+        bg = self.current_theme_colors["plot_bg"]
+        fg = self.current_theme_colors["plot_fg"]
+
+        def style_ax(ax):
+            ax.set_facecolor(bg)
+            ax.spines['bottom'].set_color(fg)
+            ax.spines['top'].set_color(fg)
+            ax.spines['left'].set_color(fg)
+            ax.spines['right'].set_color(fg)
+            ax.xaxis.label.set_color(fg)
+            ax.yaxis.label.set_color(fg)
+            ax.tick_params(axis='x', colors=fg)
+            ax.tick_params(axis='y', colors=fg)
+            ax.title.set_color(fg)
+
+        style_ax(self.ax)
+
+        # 3. 准备绘图参数
         import matplotlib
         matplotlib.rcParams.update({'font.size': self.font_size})
         palette_name = PALETTE_NAMES[self.current_palette_idx]
         colors = COLOR_PALETTES[palette_name]
+        
+        labels = info.get("labels", ("Ch1", "Ch2"))
+        label_num, label_den = labels[0], labels[1]
 
-        # === 绘图逻辑 ===
+        # 4. 绘图逻辑
         if self.plot_mode == "combo":
             use_dual = not do_norm
             target_ax_sec = self.ax.twinx() if use_dual else self.ax
             self.ax_right = target_ax_sec if use_dual else None
+            
+            # 如果是双轴，也要设置右轴的颜色
+            if self.ax_right: style_ax(self.ax_right)
+            
             self.ax.set_axisbelow(True)
             
             lines = []
             for i, s in enumerate(series_list):
                 c = colors[i % len(colors)]
                 
-                # Plot Main (Ratio or Int)
                 label_main = "Ratio" if info.get("has_ratio") else "Intensity"
                 l1, = self.ax.plot(x, s['means'], color=c, linestyle='-', linewidth=2, label=f"ROI {s['id']} {label_main}")
                 lines.append(l1)
                 
-                # Plot Components (Num/Den)
                 l2, = target_ax_sec.plot(x, s['means_num'], color=c, linestyle='--', linewidth=1, alpha=0.7, label=f"ROI {s['id']} {label_num}")
                 lines.append(l2)
                 
@@ -280,7 +345,6 @@ class ROIPlotWindow:
                     l3, = target_ax_sec.plot(x, s['means_den'], color=c, linestyle=':', linewidth=1, alpha=0.7, label=f"ROI {s['id']} {label_den}")
                     lines.append(l3)
                 
-                # Plot Aux (新增)
                 if 'means_aux' in s:
                     for k, aux_data in enumerate(s['means_aux']):
                         label_aux = info['aux_labels'][k] if k < len(info['aux_labels']) else f"Aux{k+1}"
@@ -289,14 +353,16 @@ class ROIPlotWindow:
             
             self.ax.set_ylabel(r"$\Delta R / R_0$" if do_norm else "Ratio")
             if use_dual: target_ax_sec.set_ylabel("Intensity")
+            
             if self.var_legend.get():
                 labs = [l.get_label() for l in lines]
-                self.ax.legend(lines, labs, loc='best', fontsize='small')
+                leg = self.ax.legend(lines, labs, loc='best', fontsize='small')
+                # 设置图例文字颜色
+                for text in leg.get_texts(): text.set_color(fg)
 
         else:
-            # === Single Modes (Ratio, Num, Den, Aux_i) ===
+            # Single Modes
             ylabel = "Value"
-            
             for i, s in enumerate(series_list):
                 c = colors[i % len(colors)]
                 data_to_plot = None
@@ -311,7 +377,6 @@ class ROIPlotWindow:
                     data_to_plot = s['means_den']
                     ylabel = r"$\Delta F / F_0$" if do_norm else f"Intensity ({label_den})"
                 elif self.plot_mode.startswith("aux_"):
-                    # [新增] 解析 Aux 索引
                     try:
                         idx = int(self.plot_mode.split("_")[1])
                         if idx < len(s['means_aux']):
@@ -327,9 +392,11 @@ class ROIPlotWindow:
             else: self.ax.set_yscale('linear')
                 
             self.ax.set_ylabel(ylabel)
-            if self.var_legend.get(): self.ax.legend(loc='best', fontsize='small')
+            if self.var_legend.get(): 
+                leg = self.ax.legend(loc='best', fontsize='small')
+                for text in leg.get_texts(): text.set_color(fg)
 
-        # 通用设置
+        # 5. 通用设置
         self.ax.set_xlabel(f"Time ({unit})")
         if self.var_grid.get(): self.ax.grid(True, which="both", alpha=0.3)
         else: self.ax.grid(False)
@@ -340,19 +407,17 @@ class ROIPlotWindow:
 
     def _copy_data(self, with_time=True):
         """
-        导出数据逻辑：
-        :param with_time: True=包含时间列, False=仅导出数据列
+        导出数据逻辑
         """
         if not self.data_cache: return
         d = self.data_cache
         x = d['x']; series = d['series']; info = d['info']
         unit = d['unit']
         
-        # 1. 确定当前要导出的数据类型名称 (用于 Header)
         data_label = "Value"
         if self.plot_mode == "ratio": data_label = "Ratio"
-        elif self.plot_mode == "num": data_label = info['labels'][0] # Ch1
-        elif self.plot_mode == "den": data_label = info['labels'][1] # Ch2
+        elif self.plot_mode == "num": data_label = info['labels'][0]
+        elif self.plot_mode == "den": data_label = info['labels'][1]
         elif self.plot_mode.startswith("aux_"):
             try:
                 idx = int(self.plot_mode.split("_")[1])
@@ -360,44 +425,32 @@ class ROIPlotWindow:
             except: data_label = "Aux"
         elif self.plot_mode == "combo": data_label = "Combo"
 
-        # 2. 构建 Header
         content = ""
         header_parts = []
-        
-        # 如果需要时间，添加时间列头
-        if with_time:
-            header_parts.append(f"Time({unit})")
+        if with_time: header_parts.append(f"Time({unit})")
         
         if self.plot_mode == "combo":
-            # Combo 模式：导出该 ROI 的所有分量
             for s in series:
                 header_parts.append(f"R_{s['id']}")
                 header_parts.append(f"N_{s['id']}")
                 if info.get("has_ratio"): header_parts.append(f"D_{s['id']}")
         else:
-            # 单一视图模式：仅导出当前看的数据
             for s in series:
                 header_parts.append(f"ROI_{s['id']}_{data_label}")
         
         content += "\t".join(header_parts) + "\n"
         
-        # 3. 构建数据行
         for i in range(len(x)):
             row_parts = []
-            
-            # 如果需要时间，添加时间数据
-            if with_time:
-                row_parts.append(f"{x[i]:.4f}")
+            if with_time: row_parts.append(f"{x[i]:.4f}")
             
             for s in series:
                 if self.plot_mode == "combo":
-                    # Combo 导出所有
-                    row_parts.append(f"{s['means'][i]:.5f}")     # Ratio
-                    row_parts.append(f"{s['means_num'][i]:.5f}") # Num
+                    row_parts.append(f"{s['means'][i]:.5f}")     
+                    row_parts.append(f"{s['means_num'][i]:.5f}") 
                     if info.get("has_ratio"): 
-                        row_parts.append(f"{s['means_den'][i]:.5f}") # Den
+                        row_parts.append(f"{s['means_den'][i]:.5f}") 
                 else:
-                    # 单一视图：根据模式抓取特定列
                     val = 0.0
                     if self.plot_mode == "ratio": val = s['means'][i]
                     elif self.plot_mode == "num": val = s['means_num'][i]
@@ -407,28 +460,20 @@ class ROIPlotWindow:
                             idx = int(self.plot_mode.split("_")[1])
                             val = s['means_aux'][idx][i]
                         except: val = 0.0
-                    
                     row_parts.append(f"{val:.5f}")
             
             content += "\t".join(row_parts) + "\n"
             
-        # 4. 写入剪贴板
         self.window.clipboard_clear()
         self.window.clipboard_append(content)
         
-        # 5. 按钮反馈逻辑 (1秒后恢复)
-        # 确定是哪个按钮触发的
         target_btn = self.btn_copy_time if with_time else self.btn_copy_data
-        original_text = target_btn.cget("text") # 获取原始文字
-        
-        # 变身
+        original_text = target_btn.cget("text")
         target_btn.config(text="✔", style="Success.TButton")
         
-        # 1秒后恢复
         def restore():
             try:
                 if target_btn.winfo_exists():
                     target_btn.config(text=original_text, style="TButton")
             except: pass
-
         self.window.after(1000, restore)
