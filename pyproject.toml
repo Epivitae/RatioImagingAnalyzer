@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ria-gui"
-version = "1.8.1.6"
+version = "1.8.1.7"
 
 authors = [
   { name = "Kui Wang" },           # 这一项只写名字，会被映射到 Author 字段
@@ -39,16 +39,16 @@ classifiers = [
 
 dependencies = [
     "numpy>=1.23,<2.0",
-    "matplotlib>=3.5,<3.10",
-    "tifffile>=2023.2,<2024.0",
+    "matplotlib>=3.5,<4.0",
+    "tifffile>=2023.2",
     "opencv-python>=4.5,<5.0",
     "requests>=2.25,<3.0",
-    "packaging>=23.0,<25.0",
-    "rich>=13.0,<15.0",
+    "packaging>=23.0",
+    "rich>=13.0",
     "aicsimageio>=4.12,<5.0",
-    "bioformats_jar>=2020.5,<2026.0",
-    "imagecodecs>=2023.1,<2024.0",
-    "xsdata-pydantic-basemodel>=24.0,<26.0",
+    "bioformats_jar>=2020.5",
+    "imagecodecs>=2023.1",
+    "xsdata-pydantic-basemodel>=24.0",
 ]
 
 
