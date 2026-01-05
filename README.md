@@ -37,7 +37,7 @@ We built RIA so you can take your TIFF stacks, go to a coffee shop (or just your
 </p>
 
 
-[Image of fluorescence ratiometric imaging process diagram]
+
 
 
 ## 💡 Why use RIA?
@@ -63,6 +63,12 @@ RatioImagingAnalyzer/
 ```
 
 ## 🚀 Installation
+
+### Prerequisites (Important!)
+To use the full functionality of RIA (especially reading complex microscopy formats like `.nd2`, `.lif`, `.czi` via Bio-Formats), **you must have Java installed**.
+* Please ensure a **Java Runtime Environment (JRE)** or **OpenJDK** is installed and added to your system path.
+
+---
 
 ### Option 1: Install via PyPI (Recommended for Pythoners)
 
@@ -95,12 +101,15 @@ ria
    The source code is located in the `src` directory:
 
    ```bash
-   python src/ria_gui/main.py
+   python ria.py
    ```
 
 ### Option 3: Standalone Executable (For End Users)
 
 Check the [Releases](https://github.com/Epivitae/RatioImagingAnalyzer/releases) page to download the latest compiled `.exe` file for Windows. No Python installation is required.
+
+> **⚠️ Note on "Lite" Versions:**
+> The `Lite` executable is **specifically engineered for lightweight portability**. To minimize file size and remove heavy dependencies, **ROI file import is NOT supported** in this version. If you require full feature parity (including ROI import), please use the source code installation.
 
 ## 📖 Usage Workflow
 
@@ -154,6 +163,6 @@ Or use the BibTeX entry:
   publisher = {Zenodo},
   version = {v1.8.0},
   doi = {10.5281/zenodo.18107966},
-  url = {https://doi.org/10.5281/zenodo.18107966}
+  url = {[https://doi.org/10.5281/zenodo.18107966](https://doi.org/10.5281/zenodo.18107966)}
 }
 ```
