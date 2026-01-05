@@ -1116,14 +1116,15 @@ class RatioAnalyzerApp:
             self.root.after(0, lambda: self.btn_save_input.config(state="normal", text="📥 Save Z-Proj Tiff"))
 
 
+    # src/gui.py
+
     def _on_axes_change(self, *args):
         """
-        [修改] 实时监听 Axes 输入框。
+        [修改版] 实时监听 Axes 输入框。
         逻辑：
-        1. 只要 Axes 里没有 'Z'，强制禁用 Z-Proj 并清空文字。
-        2. 只要 Axes 里没有 'Z'，隐藏 Z-Stack 徽章。
+        1. 监听 'Z': 控制 Z-Proj 选项和 Z-Stack 徽章。
+        2. 监听 'C': 如果没有 C，禁用多通道拆分控件 (Mixed Stacks, Ch Count)。
         """
-        # 尚未初始化完成时可能报错，先做检查
         if not hasattr(self, 'combo_z_proj') or not hasattr(self, 'lbl_z_proj'):
             return
 
@@ -1134,38 +1135,44 @@ class RatioAnalyzerApp:
         # 获取缓存的层数，默认为 1
         z_count = getattr(self, 'cached_z_count', 1)
 
+        # --- Z 轴逻辑 ---
         if 'Z' in axes_text:
-            # === 情况 A: 存在 Z 轴 ===
-            
-            # 1. 恢复 Z-Stack 徽章 (如果层数 > 1)
+            # 存在 Z 轴
             if z_count > 1:
                 self.lbl_z_indicator.config(text=f"❏{z_count}", style="BadgeOrange.TLabel")
             else:
                 self.lbl_z_indicator.config(text="", style="White.TLabel")
 
-            # 2. 激活投影选项
             self.lbl_z_proj.config(state="normal", foreground=COLOR_NORMAL)
             self.combo_z_proj.config(state="readonly")
             
-            # [新增] 如果文字被清空了，恢复默认值
-            # 这样看起来就是从“不可用状态”变回了“可用状态”
+            # 恢复默认值
             if not self.z_proj_var.get():
                 self.z_proj_var.set("Ave (AIP)")
-
         else:
-            # === 情况 B: 无 Z 轴 (被用户删除了，或本身就没有) ===
-            
-            # 1. [新增] 隐藏 Z-Stack 徽章
+            # 无 Z 轴
             self.lbl_z_indicator.config(text="", style="White.TLabel")
-
-            # 2. 禁用投影选项
             self.lbl_z_proj.config(state="disabled", foreground=COLOR_DISABLED)
             self.combo_z_proj.config(state="disabled")
-            
-            # 3. [新增] 清空下拉框文字
-            # 这是一个视觉 Hack，因为 disabled 的文字通常还是黑色的。
-            # 直接把它设为空字符串，用户就看不到了，实现了“彻底变灰/消失”的效果。
-            self.z_proj_var.set("")
+            self.z_proj_var.set("") # 清空文字
+
+        # --- [新增] C 轴逻辑 ---
+        if 'C' not in axes_text:
+            # 单通道：禁用拆分选项
+            if hasattr(self, 'chk_inter'):
+                self.chk_inter.config(state="disabled")
+            if hasattr(self, 'sp_channels'):
+                self.sp_channels.config(state="disabled")
+            if hasattr(self, 'lbl_ch_count'):
+                self.lbl_ch_count.config(foreground=COLOR_DISABLED)
+        else:
+            # 多通道：根据之前的检测结果决定是否启用
+            # (如果之前是 explicitly detected 多通道，则保持 disabled，否则 normal)
+            # 这里简单处理：至少恢复 Label 颜色，具体的 state 由加载逻辑控制
+            if hasattr(self, 'lbl_ch_count'):
+                self.lbl_ch_count.config(foreground=COLOR_NORMAL)
+
+
 
     def setup_preprocess_group(self):
         self.grp_pre = ttk.LabelFrame(self.frame_left, padding=10, style="Card.TLabelframe")
@@ -1981,11 +1988,10 @@ class RatioAnalyzerApp:
             self.root.after(0, lambda: self._load_data_error(err_msg))
 
 
-
-    # [关键修改] 必须在括号里加上 predefined_roles=None，否则就会报 "but 4 were given"
     def _load_data_post_process(self, raw_channels, on_success_cb=None, predefined_roles=None):
         """
         回到主线程：处理角色分配、绘图、恢复按钮状态。
+        [修改] 针对单通道模式，智能禁用"Save Raw Ratio"按钮。
         """
         self.is_loading_data = False
         self.pb_loading["value"] = 100
@@ -1994,71 +2000,72 @@ class RatioAnalyzerApp:
         try:
             # 1. 角色分配 (Ask Roles)
             roles = None 
-            
-            # [新增] 优先使用预定义角色 (工程文件加载时)
             if predefined_roles is not None:
                 print("Using predefined channel roles from project.")
                 roles = predefined_roles
-
-            # 否则，如果是多通道且没有预定义，则询问用户
             elif len(raw_channels) > 2:
                 self.root.config(cursor="") 
                 user_roles = self.ask_channel_roles(len(raw_channels))
                 roles = user_roles
-                
             elif len(raw_channels) == 0:
                  raise ValueError(f"No channels loaded.")
 
-            # 2. Set Data
+            # 2. Set Data (Model 层处理)
             self.session.set_data(raw_channels, roles)
             
-            # 1. 运动矫正按钮控制
-            # 逻辑变更：只要有数据且是多帧图像 (Time-Lapse)，无论单通道还是双通道，都允许矫正。
+            # --- [UI 状态联动核心逻辑] ---
+
+            # A. 运动校正按钮：只要有数据且是多帧图像 (Time-Lapse)，无论单通道还是双通道，都允许矫正
             if self.session.data1 is not None and self.session.data1.shape[0] > 1:
                 self.btn_align.config(state="normal", text=self.t("btn_align"), style="TButton")
             else:
                 self.btn_align.config(state="disabled")
 
-            # 2. Ratio 阈值控件视觉反馈
-            # 逻辑保持：只有存在 Ratio (双通道) 时，Ratio Min 标签才显示为黑色，否则变灰提示不可用
+            # B. 单/双通道差异化处理
             if self.session.data2 is not None:
-                self.ui_elements["lbl_ratio_thr"].config(foreground="black")
+                # === 双通道 (Ratio) 模式 ===
+                self.ui_elements["lbl_ratio_thr"].config(foreground="black") # 启用比率阈值文字
+                self.ui_elements["btn_save_raw"].config(state="normal")      # [关键] 启用 Save Raw Ratio
+                self.view_mode = "ratio"
             else:
-                self.ui_elements["lbl_ratio_thr"].config(foreground="gray")
+                # === 单通道 (Intensity) 模式 ===
+                self.ui_elements["lbl_ratio_thr"].config(foreground="gray")  # 禁用比率阈值文字
+                self.ui_elements["btn_save_raw"].config(state="disabled")    # [关键] 禁用 Save Raw Ratio
+                self.view_mode = "ratio" # 在 model.py 里，单通道的 "ratio" 模式会自动回退为返回 Ch1-BG
 
+            # C. 重建通道按钮条
             self.data1_raw = None
             self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
-
-            self.view_mode = "ratio"
             self.rebuild_channel_bar()
             
+            # D. 初始化播放器
             self.frame_scale.configure(to=self.data1.shape[0]-1)
             self.var_frame.set(0); self.frame_scale.set(0)
-
-            # ✅ [新增] 初始化循环范围为全长
             self.loop_start = 0
             self.loop_end = self.data1.shape[0] - 1
             self.var_loop_active.set(False)
             self._update_loop_label()
             
+            # E. 徽章显示
             count = len(raw_channels)
-            if count == 1: self.lbl_ch_indicator.config(text=f" 1 Ch (Int) ", style="BadgeGreen.TLabel")
-            else: self.lbl_ch_indicator.config(text=f" {count} Chs (Ratio) ", style="BadgeBlue.TLabel")
+            if count == 1: 
+                self.lbl_ch_indicator.config(text=f" 1 Ch (Int) ", style="BadgeGreen.TLabel")
+            else: 
+                self.lbl_ch_indicator.config(text=f" {count} Chs (Ratio) ", style="BadgeBlue.TLabel")
 
+            # F. 初始化绘图引擎
             h, w = self.data1.shape[1], self.data1.shape[2]
             self.plot_mgr.init_image((h, w), cmap="coolwarm")
             self.roi_mgr.connect(self.plot_mgr.ax)
             self.update_plot()
 
-            # 4. 按钮反馈
+            # G. 加载完成反馈
             self.pb_loading.pack_forget()
             self.btn_load.config(text="✅ Data Loaded!", style="Success.TButton", cursor="")
             self.btn_load.pack(fill="both", expand=True) 
             self.root.after(2000, self._reset_load_button)
 
-            # =========================================================
-            # [关键] 执行工程恢复回调！
-            # =========================================================
+            # H. 执行工程恢复回调
             if on_success_cb:
                 print("Executing Project Restore Callback...")
                 on_success_cb()
@@ -2069,9 +2076,6 @@ class RatioAnalyzerApp:
 
 
 
-    
-
-    # [新增辅助方法 3] 主线程后处理 (失败)
 
     def _load_data_error(self, error_msg):
         # 停止进度条
@@ -2113,7 +2117,12 @@ class RatioAnalyzerApp:
             self.btn_load.config(state="disabled")
 
 
+    # src/gui.py
+
     def clear_all_data(self):
+        """
+        [修改版] 清除所有数据并重置 UI 到初始状态。
+        """
         self.is_playing = False
         self.btn_play.config(text="▶")
 
@@ -2131,7 +2140,6 @@ class RatioAnalyzerApp:
         if hasattr(self, 'lbl_loop_range'):
             self.lbl_loop_range.config(text="")
 
-
         self.c1_path = None
         self.c2_path = None
         self.dual_path = None
@@ -2140,28 +2148,46 @@ class RatioAnalyzerApp:
         self.lbl_c2_path.config(text=self.t("lbl_no_file"))
         self.lbl_dual_path.config(text=self.t("lbl_no_file"))
         
-        # 重置通道数徽章
+        # --- [FIX] File Loading 区域完全重置 ---
+        
+        # 1. 重置 Axes 输入框 (关键)
+        if hasattr(self, 'var_axes_entry'):
+            self.var_axes_entry.set("?") 
+
+        # 2. 重置 Mixed Stacks 复选框 & 恢复可用
+        if hasattr(self, 'is_interleaved_var'):
+            self.is_interleaved_var.set(False)
+        if hasattr(self, 'chk_inter'):
+            self.chk_inter.config(state="normal")
+
+        # 3. 重置通道计数 & 恢复可用
+        if hasattr(self, 'var_n_channels'):
+            self.var_n_channels.set(2)
+        if hasattr(self, 'sp_channels'):
+            self.sp_channels.config(state="normal")
+        if hasattr(self, 'lbl_ch_count'):
+            self.lbl_ch_count.config(foreground="#333333") 
+
+        # 4. 清空状态提示
+        if hasattr(self, 'lbl_status'):
+            self.lbl_status.config(text="")
+        
+        # 5. 重置通道指示器
         if hasattr(self, 'lbl_ch_indicator'):
             self.lbl_ch_indicator.config(text="", style="White.TLabel")
 
-        # =========================================================
-        # [核心修复] 重置 Z-Stack 相关的 UI
-        # =========================================================
+        # 6. 重置 Z-Stack UI
         if hasattr(self, 'lbl_z_indicator'):
-            # 1. 清除 Z-Stack 徽章文字 (修复 bug)
             self.lbl_z_indicator.config(text="", style="White.TLabel")
-        
+
         if hasattr(self, 'lbl_z_proj'):
-            # 2. 将 "Z-Proj:" 标签文字显式变灰
             self.lbl_z_proj.config(state="disabled", foreground="#A0A0A0")
-            
-            # 3. 禁用下拉框 (系统会自动处理内部文字变灰，或者直接变不可点)
             self.combo_z_proj.config(state="disabled")
-            
-            # (可选) 如果你想让里面的字彻底消失，可以取消注释下面这行：
-            # self.z_proj_var.set("") 
-        # =========================================================
-        
+            if hasattr(self, 'z_proj_var'):
+                self.z_proj_var.set("") # 清空文字
+
+        # --------------------------------------
+
         self.btn_load.config(state="disabled")
         self.btn_align.config(state="disabled", text=self.t("btn_align"), style="TButton")
         self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
@@ -2181,7 +2207,6 @@ class RatioAnalyzerApp:
         for btn in self.channel_buttons:
             btn.destroy()
         self.channel_buttons = []
-
 
     def update_mode_options(self):
         txt_c1_c2 = self.t("mode_c1_c2") if "mode_c1_c2" in LANG_MAP else "Ch1 / Ch2"
@@ -2517,12 +2542,20 @@ class RatioAnalyzerApp:
             ratio_thresh=r_th
         )
 
+    # src/gui.py
+
     def save_stack_thread(self):
+        """
+        启动保存处理后的堆栈 (Ratio/Intensity Stack) 的线程。
+        这是保存“结果”，即用户在屏幕上看到的伪彩视频。
+        """
         if self.data1 is None: return
         
-        # [修复] 1. 在主线程弹出对话框 (UI 线程安全)
+        # 1. 在主线程弹出对话框 (UI 线程安全)
         ts = datetime.datetime.now().strftime("%H%M%S")
-        path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Ratio_Stack_{ts}.tif")
+        # 默认文件名提示这是处理过的结果
+        default_name = f"Result_{self.view_mode}_Stack_{ts}.tif"
+        path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=default_name)
         
         if not path: return # 用户取消
         
@@ -2532,11 +2565,12 @@ class RatioAnalyzerApp:
         # 3. 启动线程，把 path 传进去
         threading.Thread(target=self.save_stack_task, args=(path,), daemon=True).start()
     
-    # [修改] 任务函数接收 path 参数，不再自己弹窗
     def save_stack_task(self, path):
+        """
+        [修复版] 接收 path 参数，执行保存逻辑。
+        """
         try:
-            # 收集参数 (在主线程读取变量最安全，但这里读 DoubleVar 通常没问题，严谨做法是在主线程收集好 params 传进来)
-            # 为了简单，这里暂且保留，如果报错，请在 save_stack_thread 里把 params 收集好传进来
+            # 收集参数 (从 UI 变量获取)
             params = {
                 "int_thresh": self.var_int_thresh.get(),
                 "ratio_thresh": self.var_ratio_thresh.get(),
@@ -2545,69 +2579,23 @@ class RatioAnalyzerApp:
                 "use_custom_bg": self.use_custom_bg_var.get()
             }
 
+            # 定义进度回调
             def progress_cb(curr, total):
                 self.root.after(0, lambda: self.ui_elements["btn_save_stack"].config(text=f"⏳ {curr}/{total}"))
 
-            # [CALL MODEL]
+            # [CALL MODEL] 执行保存
             self.session.export_processed_stack(path, params, progress_callback=progress_cb)
             
             self.root.after(0, lambda: messagebox.showinfo("Success", f"Stack saved to:\n{path}"))
             
         except Exception as e: 
             self.root.after(0, lambda: messagebox.showerror("Error", f"Save failed: {e}"))
-            import traceback; traceback.print_exc()
-        finally: 
-            self.root.after(0, lambda: self.ui_elements["btn_save_stack"].config(state="normal", text=self.t("btn_save_stack")))
-    
-    def save_stack_task(self):
-        try:
-            # 1. 禁用按钮，防止重复点击
-            # 注意：在线程中操作 UI 最好用 after，或者确保这是在主线程触发前的状态更新
-            self.root.after(0, lambda: self.ui_elements["btn_save_stack"].config(state="disabled", text="⏳ Saving..."))
-            
-            # 2. 弹出文件保存对话框 (必须在主线程，这里通常没问题，因为 thread 是在 task 内部启动的还是外部？)
-            # 假设这个 task 是被 threading.Thread 调用的，那么 ask_filename 最好在外部做。
-            # 但为了兼容旧逻辑，如果原本就是直接调用的，我们先这样写。
-            # 如果这是一个线程函数，filedialog 可能会卡住。
-            # 为了稳妥，建议逻辑是：主线程获取路径 -> 启动子线程保存。
-            # 但为了少改动，我们假设这里运行环境和之前一致。
-            
-            ts = datetime.datetime.now().strftime("%H%M%S")
-            # 注意：filedialog 并不是完全线程安全的，但在 Windows 上通常能跑
-            path = filedialog.asksaveasfilename(defaultextension=".tif", initialfile=f"Ratio_Stack_{ts}.tif")
-            
-            if not path: 
-                # 取消了，恢复按钮
-                self.root.after(0, lambda: self.ui_elements["btn_save_stack"].config(state="normal", text=self.t("btn_save_stack")))
-                return
-            
-            # 3. 收集参数 (从 UI 变量获取)
-            params = {
-                "int_thresh": self.var_int_thresh.get(),
-                "ratio_thresh": self.var_ratio_thresh.get(),
-                "smooth": int(self.var_smooth.get()),
-                "log_scale": self.log_var.get(),
-                "use_custom_bg": self.use_custom_bg_var.get()
-            }
-
-            # 4. 定义进度回调 (用于更新按钮文字)
-            def progress_cb(curr, total):
-                # 使用 root.after 确保 UI 更新在主线程执行
-                self.root.after(0, lambda: self.ui_elements["btn_save_stack"].config(text=f"⏳ {curr}/{total}"))
-
-            # 5. [CALL MODEL] 执行保存
-            self.session.export_processed_stack(path, params, progress_callback=progress_cb)
-            
-            # 6. 完成提示
-            self.root.after(0, lambda: messagebox.showinfo("Success", f"Stack saved to:\n{path}"))
-            
-        except Exception as e: 
-            self.root.after(0, lambda: messagebox.showerror("Error", f"Save failed: {e}"))
-            # 打印报错堆栈以便调试
             import traceback; traceback.print_exc()
         finally: 
             # 无论成功失败，最后都要恢复按钮
             self.root.after(0, lambda: self.ui_elements["btn_save_stack"].config(state="normal", text=self.t("btn_save_stack")))
+    
+    
     def save_raw_thread(self):
         if self.data1 is None: return
         threading.Thread(target=self.save_raw_task).start()

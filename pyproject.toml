@@ -38,18 +38,19 @@ classifiers = [
 ]
 
 dependencies = [
-    "numpy",
-    "matplotlib",
-    "tifffile",
-    "opencv-python",
-    "requests",
-    "packaging",           # [新增] 对应你发布脚本中的版本解析
-    "rich",                # [新增] 对应你脚本中的 UI 显示
-    "aicsimageio",         # [新增] OIR 读取核心
-    "bioformats_jar",      # [新增] Java 桥接
-    "imagecodecs",         # [新增] 复杂格式解码
-    "xsdata-pydantic-basemodel", # [新增] 修复之前遇到的元数据解析报错
+    "numpy>=1.23,<2.0",
+    "matplotlib>=3.5,<3.10",
+    "tifffile>=2023.2,<2024.0",
+    "opencv-python>=4.5,<5.0",
+    "requests>=2.25,<3.0",
+    "packaging>=23.0,<25.0",
+    "rich>=13.0,<15.0",
+    "aicsimageio>=4.12,<5.0",
+    "bioformats_jar>=2020.5,<2026.0",
+    "imagecodecs>=2023.1,<2024.0",
+    "xsdata-pydantic-basemodel>=24.0,<26.0",
 ]
+
 
 [project.urls]
 Homepage = "https://github.com/Epivitae/RatioImagingAnalyzer"
