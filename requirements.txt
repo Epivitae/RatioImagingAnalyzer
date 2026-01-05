@@ -1,5 +1,16 @@
-numpy
-matplotlib
-tifffile
-opencv-python
-requests
+numpy>=1.21.0
+matplotlib>=3.5.0
+tifffile>=2023.0.0
+imagecodecs>=2023.0.0
+scipy>=1.8.0
+requests>=2.25.0
+
+# --- 新增核心依赖 ---
+# 用于 OIR/ND2/LIF 等显微镜格式读取 (万能钥匙)
+aicsimageio>=4.10.0
+
+# 用于连接 Python 和 Java 以解码 OIR (必须)
+bioformats_jar>=2020.0.0
+
+# 用于图像配准 (ECC Alignment) 和平滑算法 (替代了部分 SciPy 功能)
+opencv-python>=4.5.0
