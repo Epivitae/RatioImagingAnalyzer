@@ -2012,7 +2012,14 @@ class RatioAnalyzerApp:
 
             # 2. Set Data (Model 层处理)
             self.session.set_data(raw_channels, roles)
-            
+
+            # [NEW] Check if lazy loading is enabled
+            if hasattr(self.session.data1, 'is_lazy') and self.session.data1.is_lazy:
+                print(f"✓ Lazy loading enabled: {self.session.data1.shape}")
+                print(f"  Memory footprint: Minimal (data loaded on-demand)")
+            else:
+                print(f"  Eager loading: {self.session.data1.shape}")
+
             # --- [UI 状态联动核心逻辑] ---
 
             # A. 运动校正按钮：只要有数据且是多帧图像 (Time-Lapse)，无论单通道还是双通道，都允许矫正
@@ -2054,7 +2061,8 @@ class RatioAnalyzerApp:
                 self.lbl_ch_indicator.config(text=f" {count} Chs (Ratio) ", style="BadgeBlue.TLabel")
 
             # F. 初始化绘图引擎
-            h, w = self.data1.shape[1], self.data1.shape[2]
+            # LazyArray shape is (T, C, Z, Y, X), we need (Y, X)
+            h, w = self.data1.shape[-2], self.data1.shape[-1]
             self.plot_mgr.init_image((h, w), cmap="coolwarm")
             self.roi_mgr.connect(self.plot_mgr.ax)
             self.update_plot()

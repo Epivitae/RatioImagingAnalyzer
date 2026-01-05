@@ -1,254 +1,580 @@
-# src/io_utils.py
-import tifffile as tiff
-import numpy as np
-import warnings
-import os
-import sys
+"""
+Modular I/O system with lazy loading support.
 
-# --- AICS 导入检查 ---
-AICS_IMPORT_ERROR = None
+Architecture:
+    BaseReader (ABC)
+        ├── AICSReader (OIR, ND2, CZI) - Uses Dask for lazy loading
+        ├── TiffReader (Generic TIFF) - Uses tifffile
+        └── Future: Add more readers as needed
+
+Factory function get_reader() automatically selects the correct reader.
+"""
+
+import os
+import numpy as np
+import tifffile as tiff
+from abc import ABC, abstractmethod
+from typing import Optional, List, Tuple
+from pathlib import Path
+
+try:
+    from .lazy_array import LazyArray, MetadataInfo, DASK_AVAILABLE
+except ImportError:
+    from lazy_array import LazyArray, MetadataInfo, DASK_AVAILABLE
+
 try:
     from aicsimageio import AICSImage
-except ImportError as e:
+    AICS_AVAILABLE = True
+except ImportError:
+    AICS_AVAILABLE = False
     AICSImage = None
-    AICS_IMPORT_ERROR = str(e)
-# ---------------------
 
-def perform_z_projection(data, axis, method='max'):
-    if method == 'max': return np.max(data, axis=axis)
-    elif method == 'ave': return np.mean(data, axis=axis).astype(data.dtype)
-    return data
+try:
+    import dask.array as da
+except ImportError:
+    da = None
 
-def reorder_to_std_tczyx(data, current_axes):
+
+# ============================================================================
+# Abstract Base Reader
+# ============================================================================
+
+class BaseReader(ABC):
     """
-    [核心函数] 将任意维度的 data 按照 current_axes 的描述，
-    物理搬运（Transpose/Reshape）成标准的 (T, C, Z, Y, X) 5D 格式。
+    Abstract base class for all file format readers.
+
+    All readers must implement:
+    1. can_read(path) - Check if this reader can handle the file
+    2. read_metadata(path) - Extract metadata without loading pixels
+    3. read_lazy(path, **kwargs) - Return lazy-loaded data
     """
-    current_axes = current_axes.upper()
-    
-    # 1. 补齐缺失的维度到 5D
-    # 目标是 TCZYX，缺失的维度补为 1
-    # 例如：输入 TYX (3D) -> T=dim0, Y=dim1, X=dim2
-    # 我们先把它扩展成 5D，但位置要对
-    
-    # 建立映射: Axis Char -> Data Index
-    axis_map = {char: i for i, char in enumerate(current_axes)}
-    
-    # 获取各维度大小
-    shape = data.shape
-    t = shape[axis_map['T']] if 'T' in axis_map else 1
-    c = shape[axis_map['C']] if 'C' in axis_map else 1
-    z = shape[axis_map['Z']] if 'Z' in axis_map else 1
-    y = shape[axis_map['Y']] if 'Y' in axis_map else shape[-2]
-    x = shape[axis_map['X']] if 'X' in axis_map else shape[-1]
-    
-    # 如果数据本身维度不对，先不管，这里只处理维度重排
-    # 核心：使用 moveaxis 将 T, C, Z 移到前面
-    
-    # 策略：先扩展成 (..., 1, 1) 的形式，然后 transpose
-    # 但 numpy 的 transpose 需要源下标。
-    
-    # 简单做法：利用 aicsimageio 的逻辑，手动实现
-    # 1. 找到源数据中 T, C, Z, Y, X 的索引位置
-    src_indices = []
-    target_shape = []
-    
-    for char in "TCZYX":
-        if char in axis_map:
-            src_indices.append(axis_map[char])
-            target_shape.append(shape[axis_map[char]])
+
+    @staticmethod
+    @abstractmethod
+    def can_read(filepath: str) -> bool:
+        """Check if this reader can handle the given file."""
+        pass
+
+    @abstractmethod
+    def read_metadata(self, filepath: str) -> MetadataInfo:
+        """
+        Read file metadata without loading pixel data.
+
+        Returns:
+            MetadataInfo object with shape, axes, channels, etc.
+        """
+        pass
+
+    @abstractmethod
+    def read_lazy(
+        self,
+        filepath: str,
+        z_proj_method: Optional[str] = None,
+        user_axes: Optional[str] = None
+    ) -> LazyArray:
+        """
+        Read file as a lazy array (Dask-backed).
+
+        Args:
+            filepath: Path to file
+            z_proj_method: "max", "ave", or None
+            user_axes: User-specified axes order (e.g., "TZCYX")
+
+        Returns:
+            LazyArray in standardized 5D format (T, C, Z, Y, X)
+        """
+        pass
+
+
+# ============================================================================
+# AICS Reader (OIR, ND2, CZI)
+# ============================================================================
+
+class AICSReader(BaseReader):
+    """
+    Reader for professional microscopy formats using aicsimageio.
+
+    Supported formats:
+    - Olympus OIR
+    - Nikon ND2
+    - Zeiss CZI
+    - Leica LIF
+
+    Key feature: Uses Dask for lazy loading (no memory spike on open).
+    """
+
+    SUPPORTED_EXTENSIONS = {'.oir', '.nd2', '.czi', '.lif'}
+
+    @staticmethod
+    def can_read(filepath: str) -> bool:
+        if not AICS_AVAILABLE:
+            return False
+        ext = Path(filepath).suffix.lower()
+        return ext in AICSReader.SUPPORTED_EXTENSIONS
+
+    def read_metadata(self, filepath: str) -> MetadataInfo:
+        """
+        Read metadata using AICS (fast, doesn't load pixels).
+        """
+        img = AICSImage(filepath)
+
+        # AICS standardizes to TCZYX
+        axes = img.dims.order  # e.g., "TCZYX"
+        shape = img.shape
+
+        n_t = img.dims.T
+        n_c = img.dims.C
+        n_z = img.dims.Z
+
+        is_explicit_multichannel = (n_c > 1)
+
+        # Physical pixel sizes (for calibration)
+        physical_sizes = {
+            'X': img.physical_pixel_sizes.X,
+            'Y': img.physical_pixel_sizes.Y,
+            'Z': img.physical_pixel_sizes.Z
+        }
+
+        return MetadataInfo(
+            shape=shape,
+            dtype=img.dtype,
+            axes=axes,
+            n_channels=n_c,
+            n_z=n_z,
+            n_timepoints=n_t,
+            is_explicit_multichannel=is_explicit_multichannel,
+            physical_pixel_sizes=physical_sizes
+        )
+
+    def read_lazy(
+        self,
+        filepath: str,
+        z_proj_method: Optional[str] = None,
+        user_axes: Optional[str] = None
+    ) -> LazyArray:
+        """
+        Read file as Dask array (lazy loading).
+
+        CRITICAL: Uses img.dask_data instead of img.data to avoid
+        loading the entire file into memory.
+        """
+        img = AICSImage(filepath)
+
+        # Get Dask array (lazy, no memory allocation yet)
+        if DASK_AVAILABLE:
+            # Use dask_data for lazy loading
+            dask_data = img.dask_data  # Shape: (T, C, Z, Y, X)
+            print(f"[AICSReader] Lazy loading enabled: {dask_data.shape}")
         else:
-            src_indices.append(-1) # 标记为缺失
-            target_shape.append(1)
-            
-    # 2. 执行 transpose
-    # 这一步比较难，因为 -1 代表需要插入新维度。
-    # 更简单的方法：expand_dims 然后 moveaxis
-    
-    work_data = data
-    current_ax_str = list(current_axes)
-    
-    # 缺少的维度补在最前面 (索引会变，所以要小心)
-    # 不，最稳健的方法是：先 transpose 成存在的维度的标准序，再 expand_dims
-    
-    # 存在的维度排序
-    std_order = [c for c in "TCZYX" if c in current_axes]
-    # 计算 permutation
-    perm = [current_axes.find(c) for c in std_order]
-    
-    if perm:
-        work_data = np.transpose(work_data, axes=perm)
-    
-    # 现在 work_data 的轴序就是 std_order (例如 T,Z,Y,X)
-    # 我们需要把它这就成 T,1,Z,Y,X
-    
-    final_shape = (t, c, z, y, x)
-    # 既然我们已经知道每个维度的大小，且数据是 C-contiguous 的
-    # 这里直接 reshape 可能会乱，必须保证 transpose 正确
-    
-    # 重写逻辑：
-    # 1. 把所有维度按 TCZYX 提取出来 (利用 take 或者 moveaxis)
-    # moveaxis 是最稳的
-    
-    temp_data = data
-    curr_ax_list = list(current_axes)
-    
-    # 依次把 T, C, Z 移到 0, 1, 2 位置
-    # 注意：每移一次，索引会变，所以要动态查找
-    
-    dest_idx = 0
-    for char in "TCZYX":
-        if char in curr_ax_list:
-            src_i = curr_ax_list.index(char)
-            temp_data = np.moveaxis(temp_data, src_i, dest_idx)
-            # 更新 list 状态
-            curr_ax_list.pop(src_i)
-            curr_ax_list.insert(dest_idx, char)
-            dest_idx += 1
-            
-    # 此时 temp_data 的前几个维度是存在的 T/C/Z，后面是 Y/X
-    # 形状可能是 (T, Z, Y, X)
-    # 我们需要 reshape 插入 1
-    
-    # 构建 reshape 参数
-    reshape_param = []
-    for char in "TCZYX":
-        if char in current_axes:
-            reshape_param.append(shape[axis_map[char]])
+            # Fallback to eager loading if Dask not available
+            print("WARNING: Dask not available, falling back to eager loading")
+            dask_data = img.get_image_data("TCZYX")
+
+        # Apply Z-projection if requested
+        if z_proj_method and img.dims.Z > 1:
+            dask_data = self._apply_z_projection(dask_data, z_proj_method)
+
+        # AICS already outputs TCZYX, which matches our standard
+        # If user specified different axes, transpose accordingly
+        if user_axes and user_axes != img.dims.order:
+            dask_data = self._transpose_to_standard(dask_data, user_axes)
+
+        return LazyArray(dask_data)
+
+    def _apply_z_projection(self, dask_data, method: str):
+        """
+        Apply Z-projection on Dask array (lazy operation).
+
+        Args:
+            dask_data: Shape (T, C, Z, Y, X)
+            method: "max" or "ave"
+
+        Returns:
+            Projected array with shape (T, C, 1, Y, X)
+        """
+        z_axis = 2  # Z is axis 2 in TCZYX
+
+        if DASK_AVAILABLE and hasattr(dask_data, 'max'):
+            if method == "max":
+                projected = da.max(dask_data, axis=z_axis, keepdims=True)
+            elif method == "ave":
+                projected = da.mean(dask_data, axis=z_axis, keepdims=True)
+            else:
+                return dask_data
         else:
-            reshape_param.append(1)
-            
-    return temp_data.reshape(tuple(reshape_param))
+            # Fallback to NumPy
+            if method == "max":
+                projected = np.max(dask_data, axis=z_axis, keepdims=True)
+            elif method == "ave":
+                projected = np.mean(dask_data, axis=z_axis, keepdims=True)
+            else:
+                return dask_data
 
+        return projected
 
-def read_and_split_multichannel(file_path, is_interleaved, n_channels=2, z_projection_method=None, override_axes=None, progress_callback=None, status_callback=None):
-    """
-    [修改版] 
-    1. 增加维度重排 (Axes Reorder) 逻辑，解决 TZCYX 被读成 TCZYX 的问题。
-    2. 信任 AICSImageIO 的标准化能力。
-    """
-    raw_data = None
-    axes = ""
-    
-    # 1. AICS (Pro) - 它会自动处理 axes 顺序
-    if AICSImage is not None:
-        try:
-            if status_callback: status_callback("⏳ Initializing Pro Reader...")
-            img = AICSImage(file_path)
-            if progress_callback: progress_callback(5, 100)
-            
-            # AICS 获取数据时，可以直接指定输出维度顺序！
-            # 这样我们就不用自己写 reorder 了，这是最强大的功能
-            if status_callback: status_callback("📥 Reading Standardized Data...")
-            
-            # 获取 5D 数据 (T, C, Z, Y, X)
-            # AICS 会自动把文件里的维度搬运到这个位置
-            raw_data = img.get_image_data("TCZYX") 
-            axes = "TCZYX"
-            
-            if progress_callback: progress_callback(80, 100)
-            
-        except Exception as e:
-            print(f"[IO] AICS failed: {e}")
-            if "newbyteorder" in str(e): raise ValueError("NumPy version error. Downgrade NumPy.")
-            raw_data = None
+    def _transpose_to_standard(self, dask_data, user_axes: str):
+        """
+        Transpose data to standard TCZYX order.
 
-    # 2. TiffFile (Lite) - 需要手动重排
-    if raw_data is None:
-        try:
-            if status_callback: status_callback("📥 Reading with TiffFile...")
-            with tiff.TiffFile(file_path) as tif:
-                raw_data = tif.asarray()
-                
-                # A. 确定 Axes
-                if override_axes and override_axes != "?":
-                    current_axes = override_axes.upper()
-                else:
-                    # 尝试从 model 层的 inspect 逻辑中获取 (这里简化处理，重新解析一下)
-                    ij_meta = tif.imagej_metadata
-                    shape = raw_data.shape
-                    ndim = raw_data.ndim
-                    
-                    if ij_meta and ndim > 2:
-                        # 简易推断逻辑，必须与 model.py 保持一致或更简单
-                        # 如果是 ImageJ 格式，通常是 TZCYX
-                        # 只要有 ImageJ 标签，且维度对的上，我们假设它是 TZCYX
-                        # (这里为了保险，最好是让用户确认 axes，或者在 model.py 里传进来)
-                        # 既然函数签名里有 override_axes，我们假设 GUI 已经填好了正确的
-                        
-                        # 如果没有 override，我们做一个大胆的假设：如果是 5D，就是 TZCYX (ImageJ 默认)
-                        if ndim == 5: current_axes = "TZCYX"
-                        elif ndim == 4: current_axes = "TCYX" # 默认 4D
-                        elif ndim == 3: current_axes = "TYX"
-                    else:
-                        if ndim == 3: current_axes = "TYX"
-                        elif ndim == 4: current_axes = "TCYX"
-                        else: current_axes = "TCZYX" # 默认假设
+        Example:
+            If user_axes = "TZCYX", transpose to "TCZYX"
+        """
+        standard = "TCZYX"
+        if user_axes == standard:
+            return dask_data
 
-                print(f"[IO] TiffFile read shape: {raw_data.shape}, interpreting as: {current_axes}")
+        # Build permutation mapping
+        perm = [user_axes.index(ax) for ax in standard if ax in user_axes]
 
-                # B. [核心修复] 物理重排到 TCZYX
-                if current_axes != "TCZYX":
-                    print(f"[IO] Reordering axes {current_axes} -> TCZYX")
-                    raw_data = reorder_to_std_tczyx(raw_data, current_axes)
-                    axes = "TCZYX"
-                else:
-                    # 已经是标准格式，但需要补齐到 5D 以便统一处理
-                    # 这里也可以调用 reorder，它会自动处理 expand_dims
-                    raw_data = reorder_to_std_tczyx(raw_data, current_axes)
-                    axes = "TCZYX"
-
-        except Exception as e:
-            raise ValueError(f"Read failed: {e}")
-
-    # --- 至此，raw_data 必定是 (T, C, Z, Y, X) 的 5D 数组 ---
-    
-    # 3. Z-Projection (在 Axis=2)
-    # 因为已经是标准 5D，Z 轴固定在 index 2
-    if z_projection_method and raw_data.shape[2] > 1:
-        if status_callback: status_callback(f"📐 Z-Projection ({z_projection_method})...")
-        # 投影后 Z 变为 1
-        if z_projection_method == 'max':
-            raw_data = np.max(raw_data, axis=2, keepdims=True)
+        if DASK_AVAILABLE and hasattr(dask_data, 'transpose'):
+            return da.transpose(dask_data, perm)
         else:
-            raw_data = np.mean(raw_data, axis=2, keepdims=True).astype(raw_data.dtype)
+            return np.transpose(dask_data, perm)
 
-    # 4. 拆分通道 (在 Axis=1)
-    # 因为已经是标准 5D，C 轴固定在 index 1
-    n_c = raw_data.shape[1]
-    channels = []
-    
-    if n_c > 1:
-        for i in range(n_c):
-            # 提取第 i 个通道，结果为 (T, 1, Z, Y, X) -> Squeeze -> (T, Y, X)
-            ch_data = raw_data[:, i, ...] # (T, Z, Y, X)
-            # 再次 Squeeze Z (如果 Z=1)
-            ch_data = np.squeeze(ch_data) 
-            channels.append(ch_data)
+
+# ============================================================================
+# TIFF Reader (Generic)
+# ============================================================================
+
+class TiffReader(BaseReader):
+    """
+    Reader for generic TIFF files using tifffile.
+
+    Handles:
+    - ImageJ hyperstacks
+    - OME-TIFF
+    - Plain multi-page TIFFs
+
+    Note: Currently uses eager loading (loads entire file).
+    Future: Could use tifffile's zarr backend for lazy loading.
+    """
+
+    @staticmethod
+    def can_read(filepath: str) -> bool:
+        ext = Path(filepath).suffix.lower()
+        return ext in {'.tif', '.tiff'}
+
+    def read_metadata(self, filepath: str) -> MetadataInfo:
+        """
+        Read TIFF metadata (ImageJ tags, OME-XML, etc.)
+        """
+        with tiff.TiffFile(filepath) as tif:
+            series = tif.series[0]
+            shape = series.shape
+            dtype = series.dtype
+            axes = series.axes  # e.g., "TYX" or "TCYX"
+
+            # Try to extract ImageJ metadata
+            n_c = 1
+            n_z = 1
+            n_t = 1
+            is_explicit_multichannel = False
+
+            ij_meta = tif.imagej_metadata
+            if ij_meta:
+                n_c = ij_meta.get('channels', 1)
+                n_z = ij_meta.get('slices', 1)
+                n_t = ij_meta.get('frames', 1)
+
+                if n_c > 1:
+                    is_explicit_multichannel = True
+
+                # Infer axes order from metadata
+                axes = self._infer_axes_from_imagej(shape, n_t, n_c, n_z)
+            else:
+                # Fallback: Guess from shape
+                axes = self._guess_axes_from_shape(shape)
+
+            return MetadataInfo(
+                shape=shape,
+                dtype=dtype,
+                axes=axes,
+                n_channels=n_c,
+                n_z=n_z,
+                n_timepoints=n_t,
+                is_explicit_multichannel=is_explicit_multichannel
+            )
+
+    def read_lazy(
+        self,
+        filepath: str,
+        z_proj_method: Optional[str] = None,
+        user_axes: Optional[str] = None
+    ) -> LazyArray:
+        """
+        Read TIFF file.
+
+        TODO: Implement true lazy loading using tifffile's zarr backend.
+        Currently loads entire file (eager).
+        """
+        # Read entire file (eager loading)
+        data = tiff.imread(filepath)
+
+        # Get metadata to determine axes
+        meta = self.read_metadata(filepath)
+        axes = user_axes if user_axes else meta.axes
+
+        print(f"[TiffReader] Read shape: {data.shape}, axes: {axes}")
+
+        # Expand to 5D (T, C, Z, Y, X)
+        data = self._expand_to_5d(data, axes)
+
+        print(f"[TiffReader] Expanded to 5D: {data.shape}")
+
+        # Apply Z-projection if needed
+        if z_proj_method and data.shape[2] > 1:
+            data = self._apply_z_projection_numpy(data, z_proj_method)
+
+        return LazyArray(data)
+
+    def _infer_axes_from_imagej(self, shape, n_t, n_c, n_z):
+        """
+        Infer axes order from ImageJ metadata.
+
+        ImageJ typically stores as TZCYX or TCZYX.
+        """
+        ndim = len(shape)
+
+        if ndim == 2:
+            return "YX"
+        elif ndim == 3:
+            if n_t > 1:
+                return "TYX"
+            elif n_z > 1:
+                return "ZYX"
+            elif n_c > 1:
+                return "CYX"
+            else:
+                return "TYX"  # Default to time
+        elif ndim == 4:
+            if n_t > 1 and n_c > 1:
+                return "TCYX"
+            elif n_t > 1 and n_z > 1:
+                return "TZYX"
+            elif n_c > 1 and n_z > 1:
+                return "CZYX"
+            else:
+                return "TCYX"
+        elif ndim == 5:
+            # ImageJ default is TZCYX
+            return "TZCYX"
+
+        return "?" * ndim + "YX"
+
+    def _guess_axes_from_shape(self, shape):
+        """Fallback: Guess axes from shape alone."""
+        ndim = len(shape)
+
+        if ndim == 2:
+            return "YX"
+        elif ndim == 3:
+            return "TYX"
+        elif ndim == 4:
+            return "TCYX"
+        elif ndim == 5:
+            return "TCZYX"
+        else:
+            return "?" * ndim
+
+    def _expand_to_5d(self, data: np.ndarray, axes: str) -> np.ndarray:
+        """
+        Expand data to 5D (T, C, Z, Y, X) by adding singleton dimensions.
+
+        Example:
+            Input: (100, 512, 512) with axes "TYX"
+            Output: (100, 1, 1, 512, 512) with axes "TCZYX"
+        """
+        standard = "TCZYX"
+        axes = axes.upper()
+
+        # Build axis mapping
+        axis_map = {char: i for i, char in enumerate(axes)}
+
+        # Add missing dimensions
+        for ax in standard:
+            if ax not in axes:
+                # Insert new axis at the beginning
+                data = np.expand_dims(data, axis=0)
+                axes = ax + axes
+                # Update axis_map
+                axis_map = {char: i+1 if i >= 0 else i for char, i in axis_map.items()}
+                axis_map[ax] = 0
+
+        # Transpose to standard order if needed
+        if axes != standard:
+            perm = [axes.index(ax) for ax in standard]
+            data = np.transpose(data, perm)
+
+        return data
+
+    def _apply_z_projection_numpy(self, data: np.ndarray, method: str) -> np.ndarray:
+        """
+        Apply Z-projection on NumPy array.
+
+        Args:
+            data: Shape (T, C, Z, Y, X)
+            method: "max" or "ave"
+        """
+        z_axis = 2
+
+        if method == "max":
+            return np.max(data, axis=z_axis, keepdims=True)
+        elif method == "ave":
+            return np.mean(data, axis=z_axis, keepdims=True)
+        else:
+            return data
+
+
+# ============================================================================
+# Factory Function
+# ============================================================================
+
+def get_reader(filepath: str) -> BaseReader:
+    """
+    Automatically select the correct reader for a file.
+
+    Priority:
+    1. AICSReader (for OIR, ND2, CZI)
+    2. TiffReader (for TIFF)
+    3. Raise error if no reader found
+
+    Example:
+        >>> reader = get_reader("data/sample.oir")
+        >>> meta = reader.read_metadata("data/sample.oir")
+        >>> lazy_data = reader.read_lazy("data/sample.oir")
+    """
+    readers = [AICSReader(), TiffReader()]
+
+    for reader in readers:
+        if reader.can_read(filepath):
+            print(f"[IO] Selected reader: {reader.__class__.__name__}")
+            return reader
+
+    raise ValueError(f"No reader found for file: {filepath}")
+
+
+# ============================================================================
+# High-Level API (Backward Compatibility)
+# ============================================================================
+
+def read_and_split_multichannel(
+    filepath: str,
+    is_interleaved: bool,
+    n_channels: int,
+    z_proj_method: Optional[str] = None,
+    user_axes: Optional[str] = None,
+    progress_callback=None,
+    status_callback=None
+) -> List[LazyArray]:
+    """
+    High-level function to read and split multi-channel data.
+
+    This maintains backward compatibility with existing GUI code.
+
+    Args:
+        filepath: Path to file
+        is_interleaved: Whether channels are interleaved (frame-by-frame)
+        n_channels: Number of channels to split
+        z_proj_method: "max", "ave", or None
+        user_axes: User-specified axes order
+        progress_callback: Function(current, total) for progress updates
+        status_callback: Function(message) for status updates
+
+    Returns:
+        List of LazyArray objects, one per channel
+    """
+    if status_callback:
+        status_callback("Detecting file format...")
+
+    # Get appropriate reader
+    reader = get_reader(filepath)
+
+    if status_callback:
+        status_callback(f"Reading with {reader.__class__.__name__}...")
+
+    # Read metadata first (fast)
+    meta = reader.read_metadata(filepath)
+
+    if progress_callback:
+        progress_callback(1, 3)
+
+    # Read lazy data
+    lazy_data = reader.read_lazy(filepath, z_proj_method, user_axes)
+
+    if progress_callback:
+        progress_callback(2, 3)
+
+    # Split channels
+    if meta.is_explicit_multichannel or n_channels > 1:
+        channels = split_channels(lazy_data, n_channels, is_interleaved)
     else:
-        # 单通道
-        channels.append(np.squeeze(raw_data))
+        channels = [lazy_data]
 
-    # 5. 最终清理
-    final_channels = []
-    for ch in channels:
-        # 确保是 (Frames, H, W)
-        if ch.ndim == 2: ch = ch[np.newaxis, ...]
-        final_channels.append(ch)
-        
-    min_len = min(len(c) for c in final_channels)
-    if progress_callback: progress_callback(100, 100)
-    
-    return [c[:min_len] for c in final_channels]
+    if progress_callback:
+        progress_callback(3, 3)
 
-def read_separate_files(path1, path2):
-    if not os.path.exists(path1) or not os.path.exists(path2): raise FileNotFoundError("File not found")
-    d1 = tiff.imread(path1); d2 = tiff.imread(path2)
-    # RGB 检查
-    if d1.ndim > 2 and d1.shape[-1] in [3, 4]: d1 = np.mean(d1, axis=-1).astype(d1.dtype)
-    if d2.ndim > 2 and d2.shape[-1] in [3, 4]: d2 = np.mean(d2, axis=-1).astype(d2.dtype)
-    d1 = np.squeeze(d1); d2 = np.squeeze(d2)
-    if d1.ndim == 2: d1 = d1[np.newaxis, ...]
-    if d2.ndim == 2: d2 = d2[np.newaxis, ...]
-    min_len = min(d1.shape[0], d2.shape[0])
-    return d1[:min_len], d2[:min_len]
+    if status_callback:
+        status_callback("Ready")
+
+    return channels
+
+
+def split_channels(
+    lazy_data: LazyArray,
+    n_channels: int,
+    is_interleaved: bool
+) -> List[LazyArray]:
+    """
+    Split multi-channel data into separate LazyArray objects.
+
+    Args:
+        lazy_data: Input data (T, C, Z, Y, X)
+        n_channels: Number of channels
+        is_interleaved: If True, channels are frame-interleaved (TTTCCC)
+                       If False, channels are in C dimension
+
+    Returns:
+        List of LazyArray objects, one per channel
+    """
+    if not is_interleaved:
+        # Channels are in C dimension: (T, C, Z, Y, X)
+        # Split along axis 1
+        channels = []
+        for c in range(n_channels):
+            # Slice channel (lazy operation, no computation)
+            ch_data = lazy_data._data[:, c:c+1, :, :, :]
+            channels.append(LazyArray(ch_data))
+        return channels
+    else:
+        # Interleaved: Every n_channels frames belong to different channels
+        # Example: [T0_C0, T0_C1, T1_C0, T1_C1, ...]
+        # Reshape to (T//n_channels, n_channels, Z, Y, X)
+        data = lazy_data._data
+        t_total = data.shape[0]
+        t_per_channel = t_total // n_channels
+
+        channels = []
+        for c in range(n_channels):
+            # Extract every n_channels-th frame starting from c
+            ch_data = data[c::n_channels, :, :, :, :]
+            # Expand C dimension if needed
+            if ch_data.ndim == 4:
+                ch_data = ch_data[:, np.newaxis, :, :, :]
+            channels.append(LazyArray(ch_data))
+
+        return channels
+
+
+def read_separate_files(path1: str, path2: str) -> Tuple[LazyArray, LazyArray]:
+    """
+    Read two separate files as channel 1 and channel 2.
+
+    Maintains backward compatibility with existing GUI code.
+    """
+    reader1 = get_reader(path1)
+    reader2 = get_reader(path2)
+
+    data1 = reader1.read_lazy(path1)
+    data2 = reader2.read_lazy(path2)
+
+    return data1, data2
