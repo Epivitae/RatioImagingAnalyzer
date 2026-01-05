@@ -760,6 +760,217 @@ class RatioAnalyzerApp:
         self.current_lang = "en" if self.current_lang == "cn" else "cn"
         self.update_language()
 
+    def create_menubar(self):
+        """
+        Create menu bar with Tools menu for OIR conversion.
+        """
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+
+        # Tools Menu
+        tools_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Tools", menu=tools_menu)
+
+        tools_menu.add_command(
+            label="Convert OIR to TIFF...",
+            command=self.show_oir_converter_dialog
+        )
+
+        tools_menu.add_separator()
+
+        tools_menu.add_command(
+            label="Auto-use Converted TIFF",
+            command=self.toggle_auto_use_converted
+        )
+
+        # Store for later reference
+        self.tools_menu = tools_menu
+        self.auto_use_converted = tk.BooleanVar(value=True)  # Default: enabled
+
+    def toggle_auto_use_converted(self):
+        """Toggle automatic detection and use of converted TIFF files."""
+        self.auto_use_converted.set(not self.auto_use_converted.get())
+
+        if self.auto_use_converted.get():
+            messagebox.showinfo(
+                "Auto-use Converted TIFF",
+                "✓ Enabled\n\nWhen loading OIR files, RIA will automatically use converted TIFF if available."
+            )
+        else:
+            messagebox.showinfo(
+                "Auto-use Converted TIFF",
+                "✗ Disabled\n\nRIA will always load OIR files directly (slower)."
+            )
+
+    def show_oir_converter_dialog(self):
+        """Show OIR to TIFF converter dialog."""
+        try:
+            from oir_converter import OIRConverter
+        except ImportError:
+            messagebox.showerror(
+                "Import Error",
+                "OIR converter module not found!\n\nPlease ensure oir_converter.py is in the same directory."
+            )
+            return
+
+        # Create dialog
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Convert OIR to TIFF")
+        dialog.geometry("550x350")  # 增大窗口以显示所有内容
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.resizable(False, False)  # 禁止调整大小
+
+        # Apply current theme colors
+        colors = self.THEME_COLORS[self.current_theme]
+        dialog.configure(bg=colors["bg"])
+
+        # Main frame
+        main_frame = ttk.Frame(dialog, style="Card.TFrame", padding=20)
+        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Title
+        ttk.Label(
+            main_frame,
+            text="🚀 OIR/ND2/CZI → TIFF Converter",
+            font=("Segoe UI", 14, "bold"),
+            style="White.TLabel"
+        ).pack(pady=(0, 10))
+
+        # Description
+        desc = "Convert slow-loading microscopy files to optimized TIFF format.\n" \
+               "After conversion, files will load 10x faster!"
+        ttk.Label(
+            main_frame,
+            text=desc,
+            font=("Segoe UI", 9),
+            style="White.TLabel",
+            justify="center"
+        ).pack(pady=(0, 15))
+
+        # File selection
+        file_frame = ttk.Frame(main_frame, style="White.TFrame")
+        file_frame.pack(fill="x", pady=5)
+
+        ttk.Label(file_frame, text="Input file:", style="White.TLabel").pack(side="left")
+
+        file_path_var = tk.StringVar()
+        entry = ttk.Entry(file_frame, textvariable=file_path_var, state="readonly")
+        entry.pack(side="left", fill="x", expand=True, padx=5)
+
+        def browse_file():
+            from tkinter import filedialog
+            path = filedialog.askopenfilename(
+                title="Select OIR/ND2/CZI file",
+                filetypes=[
+                    ("Microscopy Files", "*.oir *.nd2 *.czi *.lif"),
+                    ("All Files", "*.*")
+                ]
+            )
+            if path:
+                file_path_var.set(path)
+
+        ttk.Button(file_frame, text="Browse...", command=browse_file).pack(side="left")
+
+        # Z-projection option
+        z_frame = ttk.Frame(main_frame, style="White.TFrame")
+        z_frame.pack(fill="x", pady=5)
+
+        ttk.Label(z_frame, text="Z-projection:", style="White.TLabel").pack(side="left")
+
+        z_method_var = tk.StringVar(value="None")
+        ttk.Radiobutton(z_frame, text="None", variable=z_method_var, value="None").pack(side="left", padx=5)
+        ttk.Radiobutton(z_frame, text="Max", variable=z_method_var, value="max").pack(side="left", padx=5)
+        ttk.Radiobutton(z_frame, text="Average", variable=z_method_var, value="ave").pack(side="left", padx=5)
+
+        # Progress area
+        progress_frame = ttk.Frame(main_frame, style="White.TFrame")
+        progress_frame.pack(fill="x", pady=15)
+
+        status_label = ttk.Label(
+            progress_frame,
+            text="Ready to convert",
+            style="White.TLabel",
+            font=("Segoe UI", 9, "italic")
+        )
+        status_label.pack()
+
+        progress_bar = ttk.Progressbar(progress_frame, mode="determinate", length=400)
+        progress_bar.pack(pady=5)
+
+        # Button frame
+        btn_frame = ttk.Frame(main_frame, style="White.TFrame")
+        btn_frame.pack(pady=10)
+
+        def start_conversion():
+            input_path = file_path_var.get()
+            if not input_path:
+                messagebox.showwarning("No File", "Please select an input file first!")
+                return
+
+            if not OIRConverter.can_convert(input_path):
+                messagebox.showerror("Invalid File", f"Cannot convert this file format!\n\nSupported: OIR, ND2, CZI, LIF")
+                return
+
+            # Disable buttons during conversion
+            btn_convert.config(state="disabled")
+            btn_cancel.config(state="disabled")
+
+            z_method = z_method_var.get()
+            if z_method == "None":
+                z_method = None
+
+            def progress_callback(current, total):
+                progress_bar["value"] = current
+                progress_bar["maximum"] = total
+                dialog.update()
+
+            def status_callback(message):
+                status_label.config(text=message)
+                dialog.update()
+
+            def do_conversion():
+                try:
+                    output_path = OIRConverter.convert(
+                        input_path,
+                        z_proj_method=z_method,
+                        progress_callback=progress_callback,
+                        status_callback=status_callback
+                    )
+
+                    # Success!
+                    self.root.after(0, lambda: messagebox.showinfo(
+                        "Success!",
+                        f"✓ Conversion complete!\n\nSaved to:\n{output_path}\n\nNext time you load this file, RIA will automatically use the converted TIFF (10x faster!)."
+                    ))
+
+                    self.root.after(0, dialog.destroy)
+
+                except Exception as e:
+                    self.root.after(0, lambda: messagebox.showerror(
+                        "Conversion Error",
+                        f"Failed to convert file:\n\n{str(e)}"
+                    ))
+
+                    self.root.after(0, lambda: btn_convert.config(state="normal"))
+                    self.root.after(0, lambda: btn_cancel.config(state="normal"))
+
+            # Run in thread to avoid freezing UI
+            import threading
+            threading.Thread(target=do_conversion, daemon=True).start()
+
+        btn_convert = ttk.Button(btn_frame, text="Convert", command=start_conversion)
+        btn_convert.pack(side="left", padx=5)
+
+        btn_cancel = ttk.Button(btn_frame, text="Cancel", command=dialog.destroy)
+        btn_cancel.pack(side="left", padx=5)
+
+        # Center dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+
 
 
     def update_language(self):
@@ -847,7 +1058,10 @@ class RatioAnalyzerApp:
         # [新增] 主题切换按钮 (记得保留这个我们之前加的按钮)
         self.btn_theme = ttk.Button(btn_frame, text="🌙", width=3, command=self.toggle_theme)
         self.btn_theme.pack(side="right", padx=(2, 10))
-        
+
+        # [新增] 创建菜单栏
+        self.create_menubar()
+
         # 主布局分割窗口
         self.main_pane = ttk.PanedWindow(self.root, orient="horizontal")
         self.main_pane.pack(fill="both", expand=True, padx=10, pady=10)
@@ -1758,19 +1972,24 @@ class RatioAnalyzerApp:
             except ImportError:
                 print("Error: Could not import 'processing' module.")
                 return
-            
+
         d1, d2, bg1, bg2 = self.get_active_data()
         if d1 is None: return
+
+        # Convert to 3D for kymograph extraction
+        d1_3d = np.squeeze(d1)
+        if d2 is not None:
+            d2_3d = np.squeeze(d2)
 
         p1, p2 = line_roi['params']
 
         try:
-            # 计算数据 (与之前相同)
-            kymo1 = extract_kymograph(d1 - bg1, p1, p2)
+            # Calculate kymograph data
+            kymo1 = extract_kymograph(d1_3d - bg1, p1, p2)
             if kymo1 is None: return
 
             if d2 is not None:
-                kymo2 = extract_kymograph(d2 - bg2, p1, p2)
+                kymo2 = extract_kymograph(d2_3d - bg2, p1, p2)
                 with np.errstate(divide='ignore', invalid='ignore'):
                     kymo_final = np.divide(kymo1, kymo2, where=kymo2 > 1.0)
                     kymo_final[kymo2 <= 1.0] = 0
@@ -1781,6 +2000,8 @@ class RatioAnalyzerApp:
 
         except Exception as e:
             print(f"Kymo update error: {e}")
+            import traceback
+            traceback.print_exc()
 
 
     def save_roi_dialog(self):
@@ -1866,6 +2087,32 @@ class RatioAnalyzerApp:
         current_tab = self.nb_import.index("current")
         if current_tab == 0 and not self.dual_path: return
         if current_tab == 1 and (not self.c1_path or not self.c2_path): return
+
+        # [NEW] Auto-detect converted TIFF for OIR files
+        if current_tab == 0 and self.auto_use_converted.get():
+            from oir_converter import OIRConverter
+
+            # Check if input is OIR/ND2/CZI
+            if OIRConverter.can_convert(self.dual_path):
+                converted_path = OIRConverter.check_converted_exists(self.dual_path)
+
+                if converted_path:
+                    print(f"[Auto-convert] Found converted TIFF: {converted_path}")
+                    print(f"[Auto-convert] Will use TIFF instead of OIR (10x faster!)")
+
+                    # Ask user if they want to use it
+                    result = messagebox.askyesno(
+                        "Converted TIFF Found",
+                        f"✓ Found previously converted TIFF file:\n\n{converted_path}\n\n" \
+                        f"Load this file instead? (10x faster than loading OIR)",
+                        default="yes"
+                    )
+
+                    if result:
+                        # Replace dual_path with converted TIFF
+                        self.dual_path = converted_path
+                        self.lbl_dual_path.config(text=f"✓ {os.path.basename(converted_path)} (Converted)")
+                        print(f"[Auto-convert] Using converted TIFF: {converted_path}")
 
         # UI 切换
         self.btn_load.pack_forget()

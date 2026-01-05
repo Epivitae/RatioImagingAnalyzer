@@ -621,7 +621,8 @@ class RoiManager:
 
     def _generate_mask(self, shape_type, params):
         if self.app.data1 is None: return None
-        h, w = self.app.data1.shape[1], self.app.data1.shape[2]
+        # Data is 5D: (T, C, Z, Y, X), use last two dimensions for height and width
+        h, w = self.app.data1.shape[-2], self.app.data1.shape[-1]
         try:
             if shape_type == "rect":
                 xmin, ymin, width, height = params
@@ -728,8 +729,11 @@ class RoiManager:
                 if mask is None or np.sum(mask) == 0: continue
 
                 y_idxs, x_idxs = np.where(mask)
-                
-                roi_num = data_num[:, y_idxs, x_idxs].astype(np.float32) - bg_num
+
+                # Extract ROI data - handle 5D format (T, C, Z, Y, X)
+                # Squeeze to get (T, Y, X) for processing
+                data_num_3d = np.squeeze(data_num)
+                roi_num = data_num_3d[:, y_idxs, x_idxs].astype(np.float32) - bg_num
                 roi_num = np.clip(roi_num, 0, None)
                 means_num = np.nanmean(roi_num, axis=1)
                 means_num = np.nan_to_num(means_num, nan=0.0)
@@ -738,7 +742,8 @@ class RoiManager:
                     means_ratio = means_num.copy()
                     means_den = np.zeros_like(means_num)
                 else:
-                    roi_den = data_den[:, y_idxs, x_idxs].astype(np.float32) - bg_den
+                    data_den_3d = np.squeeze(data_den)
+                    roi_den = data_den_3d[:, y_idxs, x_idxs].astype(np.float32) - bg_den
                     roi_den = np.clip(roi_den, 0, None)
                     mask_valid = (roi_num > int_thresh) & (roi_den > int_thresh) & (roi_den > 0.001)
                     roi_ratio = np.full_like(roi_num, np.nan)
@@ -748,11 +753,12 @@ class RoiManager:
                     means_ratio = np.nan_to_num(means_ratio, nan=0.0)
                     means_den = np.nanmean(roi_den, axis=1)
                     means_den = np.nan_to_num(means_den, nan=0.0)
-                
+
                 means_aux = []
                 for i, d_aux in enumerate(data_aux_list):
+                    d_aux_3d = np.squeeze(d_aux)
                     bg_val = bg_aux_list[i] if i < len(bg_aux_list) else 0
-                    roi_aux = d_aux[:, y_idxs, x_idxs].astype(np.float32) - bg_val
+                    roi_aux = d_aux_3d[:, y_idxs, x_idxs].astype(np.float32) - bg_val
                     roi_aux = np.clip(roi_aux, 0, None)
                     m = np.nanmean(roi_aux, axis=1)
                     m = np.nan_to_num(m, nan=0.0)
