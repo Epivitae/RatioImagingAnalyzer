@@ -54,6 +54,7 @@ LANG_MAP = {
     "btn_save_stack": {"cn": "💾 保存序列 (Stack)", "en": "💾 Save Stack"},
     "btn_save_raw": {"cn": "💽 保存原始比值", "en": "💽 Save Raw Ratio"}, 
     "btn_save_frame": {"cn": "📷 保存当前帧", "en": "📷 Save Frame"}, 
+    "btn_save_input": {"cn": "📥 保存预处理 Tiff", "en": "📥 Save Z-Proj Tiff"},
     "chk_live": {"cn": "🔴 实时监测 (Ctrl+L)", "en": "🔴 Live Monitor (Ctrl+L)"},
     "lbl_interval": {"cn": "Imaging Interval (s):", "en": "Imaging Interval (s):"}, 
     "lbl_unit": {"cn": "Plotting Unit:", "en": "Plotting Unit:"},

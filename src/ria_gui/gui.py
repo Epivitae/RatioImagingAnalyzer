@@ -923,7 +923,7 @@ class RatioAnalyzerApp:
         f_row = ttk.Frame(self.tab_dual, style="White.TFrame")
         f_row.pack(fill="x", pady=1)
 
-        self.btn_dual = ttk.Button(f_row, command=self.select_dual, text="📂 Select File")
+        self.btn_dual = ttk.Button(f_row, command=self.select_dual_threaded, text="📂 Select File") # [修改] 绑定到 threaded 方法
         self.btn_dual.pack(side="left")
         self.ui_elements["btn_dual"] = self.btn_dual
 
@@ -937,32 +937,29 @@ class RatioAnalyzerApp:
         self.lbl_dual_path = ttk.Label(f_row, text="...", foreground="gray", anchor="w", style="White.TLabel", width=1)
         self.lbl_dual_path.pack(side="left", padx=5, fill="x", expand=True)
 
+        # ✅ [新增] 状态提示栏 (用于显示 Reading Metadata...)
+        self.lbl_status = ttk.Label(self.tab_dual, text="", font=("Segoe UI", 8), foreground="#0056b3", style="White.TLabel")
+        self.lbl_status.pack(fill="x", padx=2, pady=(0, 2))
+
         # --- Row 2: Axes Input & Manual Split ---
         f_opts = ttk.Frame(self.tab_dual, style="White.TFrame")
         f_opts.pack(fill="x", pady=(2, 0))
         
-        # [左侧区域] Axes 输入
         ttk.Label(f_opts, text="Axes:", style="White.TLabel", foreground="gray").pack(side="left")
         
-        # 定义变量并绑定监听
         self.var_axes_entry = tk.StringVar(value="?")
         self.var_axes_entry.trace_add("write", self._on_axes_change) 
         
         self.entry_axes = ttk.Entry(f_opts, textvariable=self.var_axes_entry, width=7, font=("Segoe UI", 8))
         self.entry_axes.pack(side="left", padx=(2, 8))
         
-        # [右侧区域] 创建一个容器并将其 push 到右边 (side="right")
         f_right = ttk.Frame(f_opts, style="White.TFrame")
         f_right.pack(side="right")
 
-        # 在右侧容器内，控件依然是从左往右排 (side="left")
-        
-        # Interleaved Checkbox
         self.chk_inter = ttk.Checkbutton(f_right, variable=self.is_interleaved_var, style="Toggle.TButton")
         self.chk_inter.pack(side="left")
         self.ui_elements["chk_interleaved"] = self.chk_inter
         
-        # Channel Count
         self.lbl_ch_count = ttk.Label(f_right, text="Ch Count:", style="White.TLabel")
         self.lbl_ch_count.pack(side="left", padx=(10, 2))
         
@@ -970,7 +967,7 @@ class RatioAnalyzerApp:
         self.sp_channels = ttk.Spinbox(f_right, from_=1, to=20, textvariable=self.var_n_channels, width=3)
         self.sp_channels.pack(side="left")
 
-        # === Tab 2 & 3 (保持不变) ===
+        # ... (后续 Separate Files 和 Project Tab 代码保持不变) ...
         self.tab_sep = ttk.Frame(self.nb_import, style="White.TFrame", padding=(0, 5))
         self.nb_import.add(self.tab_sep, text=" Separate Files ") 
         self.ui_elements["tab_sep"] = lambda text: self.nb_import.tab(1, text=text) 
@@ -986,23 +983,17 @@ class RatioAnalyzerApp:
         self.btn_save_proj = ttk.Button(f_proj_btns, text="💾 Save Current (.ria)", command=self.save_project_dialog)
         self.btn_save_proj.pack(side="right", fill="x", expand=True, padx=(5, 0))
         
-        # --- Bottom: Global Action Buttons ---
         f_actions = ttk.Frame(self.grp_file, style="Card.TFrame")
         f_actions.pack(fill="x", pady=(10, 0))
         
-        # 1. Z-Projection 控件
         self.lbl_z_proj = ttk.Label(f_actions, text="Z-Proj:", state="disabled", foreground="#A0A0A0", style="White.TLabel")
         self.lbl_z_proj.pack(side="left", padx=(0, 2))
-        
-        # 初始值为空，避免黑色文字干扰
         self.z_proj_var = tk.StringVar(value="") 
-        
         self.combo_z_proj = ttk.Combobox(f_actions, textvariable=self.z_proj_var, 
                                          values=["Max (MIP)", "Ave (AIP)", "None (Treat as T)"], 
                                          state="disabled", width=14, font=("Segoe UI", 8))
         self.combo_z_proj.pack(side="left", padx=(0, 5))
 
-        # 2. 加载按钮容器
         self.fr_load_container = ttk.Frame(f_actions, style="Card.TFrame")
         self.fr_load_container.pack(side="left", fill="x", expand=True, padx=(0, 2))
         
@@ -1010,13 +1001,119 @@ class RatioAnalyzerApp:
         self.btn_load.pack(fill="both", expand=True)
         self.ui_elements["btn_load"] = self.btn_load
 
+        # [修改] 进度条默认隐藏
         self.pb_loading = ttk.Progressbar(self.fr_load_container, orient="horizontal", mode="determinate", maximum=100)
 
-        # 3. 清除按钮
         self.btn_clear_data = ttk.Button(f_actions, text="🗑", width=4, command=self.clear_all_data, style="Gray.TButton")
         self.btn_clear_data.pack(side="right", fill="y")
 
+    def select_dual_threaded(self):
+        p = filedialog.askopenfilename(filetypes=[("Image Files", "*.tif *.tiff *.nd2 *.oir"), ("All Files", "*.*")])
+        if not p: return
 
+        # 1. 更新 UI 显示路径
+        self.dual_path = p
+        self.lbl_dual_path.config(text=os.path.basename(p))
+        
+        # 2. 设置状态为正在读取
+        self.lbl_status.config(text="⏳ Reading Metadata... (Large file may take time)", foreground="#007acc")
+        self.btn_dual.config(state="disabled") # 防止重复点击
+        self.btn_load.config(state="disabled") # 未读完前不能加载
+        self.root.update()
+
+        # 3. 启动后台线程读取元数据
+        threading.Thread(target=self._metadata_task, args=(p,), daemon=True).start()
+
+    def _metadata_task(self, filepath):
+        try:
+            # 执行耗时的 IO 操作
+            # inspect_file_metadata 内部如果用到了 AICSImage(metadata_only=True) 依然会比较快，
+            # 但如果是网络文件，依然有延迟，所以放线程里是对的。
+            meta_res = self.session.inspect_file_metadata(filepath)
+            
+            # 传回主线程
+            self.root.after(0, lambda: self._on_metadata_ready(meta_res))
+        except Exception as e:
+            self.root.after(0, lambda: self._on_metadata_error(str(e)))
+
+    def _on_metadata_ready(self, meta_res):
+        is_explicit, channels, z, axes = meta_res
+        
+        # 更新 Model 层逻辑
+        self.cached_z_count = z
+        if hasattr(self, 'var_axes_entry'):
+            self.var_axes_entry.set(axes) # 这会触发 _on_axes_change
+
+        if is_explicit:
+            self.is_interleaved_var.set(False)
+            self.chk_inter.config(state="disabled")
+            self.sp_channels.config(state="disabled")
+        else:
+            self.chk_inter.config(state="normal")
+            self.sp_channels.config(state="normal")
+
+        # 恢复 UI 状态
+        self.lbl_status.config(text="✔ Ready.", foreground="green")
+        self.btn_dual.config(state="normal")
+        self.check_ready() # 激活 Load 按钮
+        
+        # 1秒后清除 Ready 文字
+        self.root.after(2000, lambda: self.lbl_status.config(text=""))
+
+
+
+    def save_input_thread(self):
+        """启动保存 Input 数据的线程"""
+        if self.data1 is None: return
+        
+        # --- 1. 智能生成文件名 ---
+        z_method = self.z_proj_var.get()
+        name_parts = ["Processed"] # 基础前缀
+        
+        # 判断投影方式
+        if "Max" in z_method:
+            name_parts.append("MIP")  # Max Intensity Projection
+        elif "Ave" in z_method:
+            name_parts.append("AIP")  # Average Intensity Projection
+        elif "None" not in z_method and z_method != "":
+            # 其他情况（或者之前是 Z-Stack 但未投影）
+            pass
+            
+        # 判断是否做过运动校正 (通过检查 session 中的矩阵列表)
+        if self.session.alignment_matrices:
+            name_parts.append("Aligned")
+            
+        # 添加时间戳防止重名
+        ts = datetime.datetime.now().strftime("%H%M%S")
+        name_parts.append(ts)
+        
+        # 组合文件名: e.g., "Processed_MIP_Aligned_102030.tif"
+        default_name = "_".join(name_parts) + ".tif"
+        
+        # --- 2. 弹出保存对话框 ---
+        path = filedialog.asksaveasfilename(
+            defaultextension=".tif", 
+            initialfile=default_name,
+            title="Save Preprocessed Data"
+        )
+        
+        if not path: return
+        
+        # 禁用按钮防止误触
+        self.btn_save_input.config(state="disabled", text="⏳ Saving...")
+        threading.Thread(target=self.save_input_task, args=(path,), daemon=True).start()
+
+    def save_input_task(self, path):
+        try:
+            # 调用 Model 层的新方法
+            self.session.export_input_data(path)
+            
+            self.root.after(0, lambda: messagebox.showinfo("Success", f"Saved successfully to:\n{path}\n\nTip: You can load this .tif file directly next time!"))
+        except Exception as e:
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Save failed: {e}"))
+            import traceback; traceback.print_exc()
+        finally:
+            self.root.after(0, lambda: self.btn_save_input.config(state="normal", text="📥 Save Z-Proj Tiff"))
 
 
     def _on_axes_change(self, *args):
@@ -1564,6 +1661,13 @@ class RatioAnalyzerApp:
         self.btn_save_stack = ttk.Button(fr_exp, text="💾 Save Stack", command=self.save_stack_thread)
         self.btn_save_stack.pack(fill="x", pady=2)
         self.ui_elements["btn_save_stack"] = self.btn_save_stack
+
+        # ✅ [新增] 3. Save Input (预处理后的原始图)
+        # 专门用于把 OIR/Z-Proj/Align 后的结果存下来，下次直接用
+        self.btn_save_input = ttk.Button(fr_exp, text=self.t("btn_save_input"), command=self.save_input_thread)
+        self.btn_save_input.pack(fill="x", pady=2)
+        # 不要忘了加到 ui_elements，方便后续做语言包翻译
+        self.ui_elements["btn_save_input"] = self.btn_save_input
         
         self.btn_save_raw = ttk.Button(fr_exp, text="💽 Save Raw Ratio", command=self.save_raw_thread)
         self.btn_save_raw.pack(fill="x", pady=2)
@@ -1750,14 +1854,8 @@ class RatioAnalyzerApp:
     # src/gui.py
 
    
-    
-    # 2. 修改线程方法 (修复 NameError)
 
     def load_data(self, on_success=None, predefined_roles=None):
-        """
-        [多线程版本] 入口函数
-        :param on_success: (Callable) 数据加载成功后的回调函数，用于 Project 加载
-        """
         current_tab = self.nb_import.index("current")
         if current_tab == 0 and not self.dual_path: return
         if current_tab == 1 and (not self.c1_path or not self.c2_path): return
@@ -1765,10 +1863,11 @@ class RatioAnalyzerApp:
         # UI 切换
         self.btn_load.pack_forget()
         self.pb_loading.pack(fill="both", expand=True)
-        
         self.pb_loading["value"] = 0
-        self.is_loading_data = True
-        self.root.after(50, self._simulate_progress)
+        
+        # [核心修改] 移除 is_loading_data 标志和 _simulate_progress 调用
+        # self.is_loading_data = True
+        # self.root.after(50, self._simulate_progress) <--- 删除这行
 
         self.root.update()
 
@@ -1783,16 +1882,15 @@ class RatioAnalyzerApp:
             "z_method": None,
             "on_success_cb": on_success, 
             "predefined_roles": predefined_roles,
-            "user_axes": None # [新增] 用于存储用户手动修正的 Axes
+            "user_axes": None 
         }
 
-        # [新增] 读取用户输入的 Axes 字符串
+        # ... (中间的 Axes 和 Z-Method 参数收集逻辑保持不变) ...
         if current_tab == 0 and hasattr(self, 'var_axes_entry'):
             raw_axes = self.var_axes_entry.get().strip().upper()
             if raw_axes and raw_axes != "?":
                 params["user_axes"] = raw_axes
 
-        # 获取 Z-Projection 参数
         if hasattr(self, 'combo_z_proj') and str(self.combo_z_proj['state']) != 'disabled':
             val = self.z_proj_var.get()
             if "Max" in val: params["z_method"] = "max"
@@ -1801,40 +1899,86 @@ class RatioAnalyzerApp:
 
         threading.Thread(target=self._load_data_thread, args=(params,), daemon=True).start()
 
+
+    # src/gui.py -> _load_data_thread
     def _load_data_thread(self, params):
-        """
-        后台线程：只做 I/O 和 数据读取，不操作 UI。
-        """
         try:
+            # [标记] 用于判断是否已经从"假进度条(Indeterminate)"切换到了"真进度条(Determinate)"
+            self._determinate_started = False
+
+            # --- 定义回调 1: 更新进度条数值 ---
+            def update_progress(current, total):
+                def _update_bar():
+                    # 如果这是第一次收到明确的进度信号 (比如 AICS 初始化完成了)
+                    # 停止"左右乱跳"模式，切换为"百分比"模式
+                    if not self._determinate_started:
+                        self.pb_loading.stop()
+                        self.pb_loading.config(mode="determinate")
+                        self._determinate_started = True
+                    
+                    # 计算并更新百分比
+                    if total > 0:
+                        val = (current / total) * 100
+                        self.pb_loading.configure(value=val)
+                    
+                    # [关键] 强制刷新 UI 闲置任务
+                    # 这能防止在密集循环读取时主窗口变成"未响应"或白屏
+                    self.root.update_idletasks()
+
+                # 必须将 UI 更新指令发送回主线程执行
+                self.root.after(0, _update_bar)
+
+            # --- 定义回调 2: 更新状态文字 (例如 "Reading Metadata...") ---
+            def update_status_text(msg):
+                # 使用蓝色文字显示当前正在进行的底层操作
+                self.root.after(0, lambda: self.lbl_status.config(text=msg, foreground="#007acc"))
+
+            # --- 开始读取流程 ---
             raw_channels = []
             
             if params["tab_idx"] == 0:
-                # 单文件加载
+                # [Case A] 单文件/多通道模式 (支持 OIR, ND2 等)
+                # 将两个回调函数都传下去
                 raw_channels = self.session.load_channels_from_file(
-                    params["dual_path"], 
-                    params["is_interleaved"], 
-                    params["n_ch"],
+                    filepath=params["dual_path"], 
+                    is_interleaved=params["is_interleaved"], 
+                    n_channels=params["n_ch"],
                     z_proj_method=params["z_method"],
-                    user_axes=params.get("user_axes") # [核心修改] 传入用户定义的 Axes
+                    user_axes=params["user_axes"],
+                    progress_callback=update_progress, # 传入进度回调
+                    status_callback=update_status_text # 传入文字回调
                 )
+                
             elif params["tab_idx"] == 1:
-                # 双文件加载 (通常不需要 axes 修正，暂时忽略)
+                # [Case B] 分离文件模式 (TiffFile 读取通常很快，简单处理)
+                self.root.after(0, lambda: self.lbl_status.config(text="Loading separate files...", foreground="#007acc"))
+                # 给一个 50% 的假进度
+                self.root.after(0, lambda: self.pb_loading.configure(mode="determinate", value=50))
+                
                 raw_channels = self.session.load_separate_channels(
                     params["c1_path"], 
                     params["c2_path"]
                 )
             
-            # 成功：取出回调函数，传递给 post_process
+            # --- 读取成功，清理状态并进入后处理 ---
+            
+            # 1. 清除状态栏文字
+            self.root.after(0, lambda: self.lbl_status.config(text=""))
+            
+            # 2. 获取回调和预设角色
             cb = params.get("on_success_cb") 
             roles_pre = params.get("predefined_roles")
+            
+            # 3. 调度后处理任务到主线程 (设置数据、绘图等)
             self.root.after(0, lambda: self._load_data_post_process(raw_channels, cb, roles_pre))
 
         except Exception as e:
-            # 失败：通知主线程报错 (修复 NameError 隐患)
+            # --- 读取失败 ---
             err_msg = str(e)
+            # 清除状态文字
+            self.root.after(0, lambda: self.lbl_status.config(text=""))
+            # 触发错误弹窗
             self.root.after(0, lambda: self._load_data_error(err_msg))
-
-
 
 
 
@@ -1923,32 +2067,6 @@ class RatioAnalyzerApp:
             self._load_data_error(str(e))
 
 
-
-    def _simulate_progress(self):
-        """
-        模拟进度条增长：让它看起来在动，但不会超过 90%。
-        只有当真实数据加载完成 (self.is_loading_data = False) 时才会停止。
-        """
-        if not getattr(self, 'is_loading_data', False):
-            return # 如果加载已经结束或出错，停止模拟
-
-        current_val = self.pb_loading["value"]
-        
-        # 逻辑：前期快，后期慢，卡在 90% 等待真实结束
-        if current_val < 30:
-            step = 2     # 前30%跑得快一点
-        elif current_val < 70:
-            step = 0.5   # 中间慢一点
-        elif current_val < 90:
-            step = 0.1   # 最后非常慢，给人一种“正在最后处理”的感觉
-        else:
-            step = 0     # 超过90%就停住不动，等待真实加载完成
-        
-        new_val = current_val + step
-        self.pb_loading["value"] = new_val
-        
-        # 每 30ms 刷新一次
-        self.root.after(30, self._simulate_progress)
 
 
     
@@ -2194,13 +2312,18 @@ class RatioAnalyzerApp:
         
 
     def select_c1(self):
-        p = filedialog.askopenfilename()
+        # [修改] 添加 *.oir 支持
+        p = filedialog.askopenfilename(filetypes=[("Image Files", "*.tif *.tiff *.nd2 *.oir"), ("All Files", "*.*")])
         if p: self.c1_path = p; self.lbl_c1_path.config(text=os.path.basename(p)); self.check_ready()
+
     def select_c2(self):
-        p = filedialog.askopenfilename()
+        # [修改] 添加 *.oir 支持
+        p = filedialog.askopenfilename(filetypes=[("Image Files", "*.tif *.tiff *.nd2 *.oir"), ("All Files", "*.*")])
         if p: self.c2_path = p; self.lbl_c2_path.config(text=os.path.basename(p)); self.check_ready()
+
     def select_dual(self):
-        p = filedialog.askopenfilename(filetypes=[("TIFF Files", "*.tif *.tiff *.nd2"), ("All Files", "*.*")])
+        # [修改] 添加 *.oir 支持
+        p = filedialog.askopenfilename(filetypes=[("Image Files", "*.tif *.tiff *.nd2 *.oir"), ("All Files", "*.*")])
         if p: 
             self.dual_path = p
             self.lbl_dual_path.config(text=os.path.basename(p))
@@ -2725,7 +2848,8 @@ class RatioAnalyzerApp:
                 "n_channels": self.var_n_channels.get(),
                 # [新增] 保存 Z-Projection 设置
                 "z_proj_method": self.z_proj_var.get() if str(self.combo_z_proj['state']) != 'disabled' else None,
-                "channel_roles": self.session.current_roles
+                "channel_roles": self.session.current_roles,
+                "axes": self.var_axes_entry.get() if hasattr(self, 'var_axes_entry') else None
             }
             
             # 2. 收集参数
@@ -2853,6 +2977,10 @@ class RatioAnalyzerApp:
                 self.lbl_dual_path.config(text=os.path.basename(p))
                 self.is_interleaved_var.set(src.get("is_interleaved", False))
                 self.var_n_channels.set(src.get("n_channels", 2))
+
+                saved_axes = src.get("axes", None)
+                if saved_axes and hasattr(self, 'var_axes_entry'):
+                    self.var_axes_entry.set(saved_axes)
                 
                 # 恢复 Z-Projection 设置
                 z_method = src.get("z_proj_method")
