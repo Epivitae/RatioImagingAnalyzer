@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ria-gui"
-version = "1.8.1.3"
+version = "1.8.1.6"
 
 authors = [
   { name = "Kui Wang" },           # 这一项只写名字，会被映射到 Author 字段
@@ -43,6 +43,12 @@ dependencies = [
     "tifffile",
     "opencv-python",
     "requests",
+    "packaging",           # [新增] 对应你发布脚本中的版本解析
+    "rich",                # [新增] 对应你脚本中的 UI 显示
+    "aicsimageio",         # [新增] OIR 读取核心
+    "bioformats_jar",      # [新增] Java 桥接
+    "imagecodecs",         # [新增] 复杂格式解码
+    "xsdata-pydantic-basemodel", # [新增] 修复之前遇到的元数据解析报错
 ]
 
 [project.urls]
