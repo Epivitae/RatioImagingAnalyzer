@@ -29,12 +29,14 @@
 
 **Meet RIA (or as we affectionately call her, "Li Ya / 莉丫").**
 
-RIA is an open-source tool built to solve a simple but annoying problem: **Ratiometric analysis shouldn't be stuck on the microscope computer.**
+**Ratio Imaging Analyzer (RIA)** is a specialized, standalone **bio-image analysis software** engineered for quantitative ratiometric microscopy. It provides a rigorous, coding-free workflow for processing dual-channel time-lapse data, serving as a powerful alternative to complex **ImageJ/Fiji plugins** or expensive commercial workstations (e.g., MetaMorph, NIS-Elements).
 
-Ratiometric imaging (like FRET or sensors for Tryptophan/pH/Ca²⁺) is amazing for normalizing data, but analyzing it usually requires expensive commercial software (like MetaMorph or NIS-Elements) that is locked to a specific workstation with a dongle.
+While originally designed for ratiometric imaging, RIA is fully optimized for **Metabolic Imaging** and **Label-Free Intrinsic Fluorescence** studies. It features built-in **motion correction (image registration)**, background subtraction, and standardized data export, making it an essential tool for:
 
-We built RIA so you can take your TIFF stacks, go to a coffee shop (or just your desk), and run rigorous analysis on your own laptop—no coding required.
-
+* **FRET & Biosensors:** Standard CFP/YFP, GFP/RFP, and novel energetic sensors.
+* **Metabolic Imaging:** NAD(P)H/FAD redox ratios and metabolite sensors (ATP, Lactate).
+* **Label-Free / Structural Biology:** Ratiometric **Tryptophan (Trp)** imaging for protein unfolding/conformational changes.
+* **Ion Sensing:** Calcium (Fura-2, GCaMP), pH (BCECF), and Chloride imaging.
 <p align="center">
   <img src="https://raw.githubusercontent.com/Epivitae/RatioImagingAnalyzer/main/src/ria_gui/assets/figure/analysis.gif" width="600" alt="RIA Interface showing trace analysis">
 </p>
