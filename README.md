@@ -49,6 +49,27 @@ While originally designed for ratiometric imaging, RIA is fully optimized for **
 * **Zero Coding Needed**: We know not everyone loves Python. RIA has a full GUI for background subtraction, thresholding, and dragging-and-dropping ROIs.
 * **Trust Your Data**: We don't hide the numbers. You get the visual stacks, but you also get the **raw float32 ratio data** and time-series CSVs. You can take these straight to Prism, Origin, or Excel.
 
+## 🔬 Supported Applications
+
+RIA is algorithmically agnostic to the specific fluorophores, making it compatible with any dual-emission or dual-excitation ratiometric modality:
+
+### 1. Structural Biology & Protein Dynamics (Tryptophan)
+* **Intrinsic Tryptophan Fluorescence:** Analyze protein conformational changes, unfolding, or binding events by calculating the ratio of emission shifts (e.g., 330nm / 350nm).
+* **Anisotropy-based Ratios:** Process polarized emission channels to study molecular tumbling.
+
+### 2. Metabolic & Mitochondrial Imaging
+* **Redox Ratio (Optical Redox Imaging):** Quantify metabolic states (Glycolysis vs. OXPHOS) by computing the **NADH / FAD** autofluorescence ratio.
+* **Genetically Encoded Metabolite Sensors:** Analyze modern biosensors for **ATP** (e.g., ATeam), **Lactate**, **Pyruvate**, or **Glucose**.
+
+### 3. FRET & Cell Signaling
+* **Intermolecular / Intramolecular FRET:** Robust processing for standard acceptor/donor emission stacks.
+* **Kinase Activity Reporters:** Track phosphorylation events in real-time (e.g., AKAR, CKAR).
+
+### 4. Ion & Environmental Sensing
+* **Calcium Imaging:** Ratiometric dyes (Fura-2, Indo-1) and sensors (Ratiometric-Pericam, GCaMP variants).
+* **pH & Chloride:** BCECF, Clomeleon, and other environmental probes.
+
+
 ## 📁 Project Structure
 
 ```text
