@@ -38,7 +38,8 @@ We built RIA so you can take your TIFF stacks, go to a coffee shop (or just your
 ## 💡 Why use RIA?
 
 * **Analysis Unchained**: Stop queuing for the lab workstation. RIA is a standalone executable that runs on standard PCs.
-* **Math Done Right**: Calculating ratios isn't just `A / B`. Biological images have edges and noise. We implemented a **normalized convolution algorithm** that handles `NaN` (Not a Number) values correctly. This means your data doesn't get eroded or corrupted at cell boundaries—a common issue in simple script-based analysis.
+* **Reproducibility Ready**: Science requires verification. RIA allows you to save your entire workspace (ROIs, thresholds, background settings) into a lightweight **`.ria` project file**. Send this file to collaborators or reviewers, allowing them to instantly reproduce your analysis and verify your results.
+* **Math Done Right**: Calculating ratios isn't just `A / B`. Biological images have edges and noise. We implemented a **normalized convolution algorithm** that handles `NaN` (Not a Number) values correctly. This means your data doesn't get eroded or corrupted at cell boundaries.
 * **Zero Coding Needed**: We know not everyone loves Python. RIA has a full GUI for background subtraction, thresholding, and dragging-and-dropping ROIs.
 * **Trust Your Data**: We don't hide the numbers. You get the visual stacks, but you also get the **raw float32 ratio data** and time-series CSVs. You can take these straight to Prism, Origin, or Excel.
 
@@ -64,7 +65,10 @@ RIA is available in two editions to suit different needs: **RIA Pro** (for advan
 ### 💎 Option 1: RIA Pro (PyPI / Source)
 **Recommended for: Researchers working with .oir, .nd2, .czi files.**
 
-The **Pro** version is the full-featured Python package. It includes comprehensive dependencies (`aicsimageio`, etc.) to support reading professional microscopy formats directly.
+The **Pro** version is the full-featured Python package. It includes comprehensive dependencies (`aicsimageio`, `bioformats`) to support reading professional microscopy formats directly.
+
+> **⚠️ Prerequisite: Java (JDK)**
+> To read proprietary formats (like `.oir`, `.nd2`) via the Bio-Formats backend, **you must have a Java Development Kit (JDK) installed** on your system (OpenJDK 11 or later is recommended).
 
 * **Exclusive Feature:** Direct support for Olympus **.oir**, Nikon **.nd2**, and Zeiss **.czi** files.
 * **Installation:**
@@ -82,6 +86,7 @@ The **Pro** version is the full-featured Python package. It includes comprehensi
 The **Lite** version is a re-engineered, lightweight executable optimized for speed and portability. We have significantly reduced the file size and optimized the initialization process for instant startup.
 
 * **Best For:** Standard TIFF workflows on any Windows PC.
+* **No Java Required:** Since Lite handles standard TIFFs, no external Java environment is needed.
 * **Key Features:** Zero configuration, ultra-fast cold start, minimal memory footprint.
 * **Download:** Check the [Releases](https://github.com/Epivitae/RatioImagingAnalyzer/releases) page to download the latest `RIA_Lite_vX.X.exe`.
 
@@ -110,7 +115,7 @@ For developers who want to contribute or modify the code:
 
 1. **Load Files**: 
    * Supports both **Single-Channel** (Intensity) and **Multi-Channel** (Ratio) Tiff stacks.
-   * **RIA Pro** users can directly drag & drop `.oir` / `.nd2` files.
+   * **RIA Pro** users can directly drag & drop `.oir` / `.nd2` files (ensure Java is installed).
 2. **Preprocessing**:
    * **Motion Correction**: Align shaky time-lapse data using the built-in ECC algorithm.
    * **Background**: Set a global background subtraction (Percentile) or use a custom ROI.
@@ -120,7 +125,7 @@ For developers who want to contribute or modify the code:
    * Draw ROIs (Rectangle, Circle, Polygon).
    * Click **Plot Curve** to see real-time intensity/ratio changes.
 5. **Save & Export**:
-   * **Save Project**: Save your session as a `.ria` file.
+   * **Save Project**: Save your session as a `.ria` file to allow others to reproduce your work.
    * **Export Data**: Copy data to clipboard or save processed images as Tiff stacks.
 
 ## 🧪 Automated Testing
