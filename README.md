@@ -23,7 +23,6 @@
 
 ---
 
-
 **Meet RIA (or as we affectionately call her, "Li Ya / 莉丫").**
 
 RIA is an open-source tool built to solve a simple but annoying problem: **Ratiometric analysis shouldn't be stuck on the microscope computer.**
@@ -35,10 +34,6 @@ We built RIA so you can take your TIFF stacks, go to a coffee shop (or just your
 <p align="center">
   <img src="https://raw.githubusercontent.com/Epivitae/RatioImagingAnalyzer/main/src/ria_gui/assets/figure/analysis.gif" width="600" alt="RIA Interface showing trace analysis">
 </p>
-
-
-[Image of fluorescence ratiometric imaging process diagram]
-
 
 ## 💡 Why use RIA?
 
@@ -62,51 +57,60 @@ RatioImagingAnalyzer/
 └── requirements.txt    # Dependencies
 ```
 
-## 🚀 Installation
+## 🚀 Installation & Editions
 
-### Option 1: Install via PyPI (Recommended for Pythoners)
+RIA is available in two editions to suit different needs: **RIA Pro** (for advanced features) and **RIA Lite** (for portability).
 
-RIA is available on the Python Package Index. Open your terminal and run:
+### 💎 Option 1: RIA Pro (PyPI / Source)
+**Recommended for: Researchers working with .oir, .nd2, .czi files.**
 
-```bash
-pip install ria-gui
-```
-Once installed, simply type the following command to launch the software:
-```bash
-ria
-```
+The **Pro** version is the full-featured Python package. It includes comprehensive dependencies (`aicsimageio`, etc.) to support reading professional microscopy formats directly.
 
+* **Exclusive Feature:** Direct support for Olympus **.oir**, Nikon **.nd2**, and Zeiss **.czi** files.
+* **Installation:**
+    ```bash
+    pip install ria-gui
+    ```
+    Once installed, launch it with:
+    ```bash
+    ria
+    ```
 
-### Option 2: Running from Source (Recommended for Developers/Reviewers)
+### ⚡ Option 2: RIA Lite (Standalone Executable)
+**Recommended for: Users who want instant access without installing Python.**
+
+The **Lite** version is a re-engineered, lightweight executable optimized for speed and portability. We have significantly reduced the file size and optimized the initialization process for instant startup.
+
+* **Best For:** Standard TIFF workflows on any Windows PC.
+* **Key Features:** Zero configuration, ultra-fast cold start, minimal memory footprint.
+* **Download:** Check the [Releases](https://github.com/Epivitae/RatioImagingAnalyzer/releases) page to download the latest `RIA_Lite_vX.X.exe`.
+
+### Option 3: Running from Source (Development)
+
+For developers who want to contribute or modify the code:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/Epivitae/RatioImagingAnalyzer.git
+   git clone [https://github.com/Epivitae/RatioImagingAnalyzer.git](https://github.com/Epivitae/RatioImagingAnalyzer.git)
    cd RatioImagingAnalyzer
    ```
 
 2. **Install dependencies:**
    It is recommended to use a virtual environment.
-
    ```bash
    pip install -r requirements.txt
    ```
-3. **Run the application:**
-   The source code is located in the `src` directory:
 
+3. **Run the application:**
    ```bash
    python src/ria_gui/main.py
    ```
-
-### Option 3: Standalone Executable (For End Users)
-
-Check the [Releases](https://github.com/Epivitae/RatioImagingAnalyzer/releases) page to download the latest compiled `.exe` file for Windows. No Python installation is required.
 
 ## 📖 Usage Workflow
 
 1. **Load Files**: 
    * Supports both **Single-Channel** (Intensity) and **Multi-Channel** (Ratio) Tiff stacks.
-   * Drag & drop or browse files. RIA automatically detects the channel structure.
+   * **RIA Pro** users can directly drag & drop `.oir` / `.nd2` files.
 2. **Preprocessing**:
    * **Motion Correction**: Align shaky time-lapse data using the built-in ECC algorithm.
    * **Background**: Set a global background subtraction (Percentile) or use a custom ROI.
@@ -141,7 +145,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 If you use **RIA** in your research, please cite:
 
-> Wang, K. (2025). Ratio Imaging Analyzer (RIA): A Lightweight, Standalone Python Tool for Portable Fluorescence Analysis (v1.8.0). Zenodo. [https://doi.org/10.5281/zenodo.18107966](https://doi.org/10.5281/zenodo.18107966)
+> Wang, K. (2025). Ratio Imaging Analyzer (RIA): A Lightweight, Standalone Python Tool for Portable Fluorescence Analysis (v1.8.3). Zenodo. [https://doi.org/10.5281/zenodo.18107966](https://doi.org/10.5281/zenodo.18107966)
 
 Or use the BibTeX entry:
 
@@ -152,8 +156,8 @@ Or use the BibTeX entry:
   month = dec,
   year = {2025},
   publisher = {Zenodo},
-  version = {v1.8.0},
+  version = {v1.8.3},
   doi = {10.5281/zenodo.18107966},
-  url = {https://doi.org/10.5281/zenodo.18107966}
+  url = {[https://doi.org/10.5281/zenodo.18107966](https://doi.org/10.5281/zenodo.18107966)}
 }
 ```
