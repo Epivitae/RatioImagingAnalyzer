@@ -168,7 +168,7 @@ def save_ria_tiff(filepath, data_5d, channel_names=None, params=None, extra_meta
     tiff.imwrite(
         filepath,
         data_to_save, # 使用重排后的数据
-        imagej=True,
+        imagej=False,
         metadata=ij_metadata,
         description=json_str,
         compression='zlib'
