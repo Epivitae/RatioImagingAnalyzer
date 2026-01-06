@@ -119,4 +119,54 @@ RIA 提供两个版本以满足不同需求：**RIA Pro**（高级功能）和 *
 
 1. **加载文件**：
    * 支持 **单通道** (强度) 和 **多通道** (比率) TIFF 堆栈。
-   * **RIA Pro** 用户可以直接拖放 `.oir` / `.nd2` 文件（
+   * **RIA Pro** 用户可以直接拖放 `.oir` / `.nd2` 文件（确保已安装 Java）。
+2. **预处理**：
+   * **运动校正**：使用内置的 ECC 算法校正抖动的时间序列数据。
+   * **背景扣除**：设置全局背景扣除（百分位数）或使用自定义 ROI。
+3. **可视化**：
+   * 使用工具栏在 **Ratio（比率）**、**Ch1**、**Ch2** 或 **Aux（辅助）** 通道视图之间切换。
+4. **分析**：
+   * 绘制 ROI（矩形、圆形、多边形）。
+   * 点击 **Plot Curve（生成曲线）** 查看实时强度/比率变化。
+5. **保存与导出**：
+   * **保存项目**：将当前会话保存为 `.ria` 文件，以便他人复现您的工作。
+   * **导出数据**：将数据复制到剪贴板或将处理后的图像保存为 TIFF 堆栈。
+
+## 🧪 自动化测试
+
+RIA v1.8.0 引入了由 `rich` 驱动的 "Ghost Pilot" 自动化测试脚本，以确保稳定性。
+
+运行可视化 E2E 测试演示：
+
+```bash
+python tests/auto_drive_rich.py
+```
+
+## 🤝 贡献
+
+欢迎贡献代码！请查看 [Issue Tracker](https://github.com/Epivitae/RatioImagingAnalyzer/issues) 或提交 Pull Request。
+
+## 📄 许可证
+
+本项目采用 MIT 许可证。详情请参阅 `LICENSE` 文件。
+
+## 引用
+
+如果您在研究中使用了 **RIA**，请按如下方式引用：
+
+> Wang, K. (2025). Ratio Imaging Analyzer (RIA): A Lightweight, Standalone Python Tool for Portable Fluorescence Analysis (v1.8.3). Zenodo. https://doi.org/10.5281/zenodo.18107966
+
+或者使用 BibTeX 条目：
+
+```bibtex
+@software{Wang_RIA_2025,
+  author = {Wang, Kui},
+  title = {{Ratio Imaging Analyzer (RIA): A Lightweight, Standalone Python Tool for Portable Fluorescence Analysis}},
+  month = dec,
+  year = {2025},
+  publisher = {Zenodo},
+  version = {v1.8.3},
+  doi = {10.5281/zenodo.18107966},
+  url = {[https://doi.org/10.5281/zenodo.18107966](https://doi.org/10.5281/zenodo.18107966)}
+}
+```
