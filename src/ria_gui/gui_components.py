@@ -1,6 +1,6 @@
 # src/gui_components.py
 import tkinter as tk
-from tkinter import ttk, Toplevel, messagebox
+from tkinter import ttk, Toplevel, messagebox, filedialog
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
@@ -15,6 +15,42 @@ import os
 import json
 
 ROI_COLORS = ['#FF3333', '#33FF33', '#3388FF', '#FFFF33', '#FF33FF', '#33FFFF', '#FF8833']
+
+# [新增] 自定义工具栏：强制透明背景 + 动态命名
+# [修正版] 自定义工具栏：显式保存 window 引用
+class RiaToolbar(NavigationToolbar2Tk):
+    def __init__(self, canvas, window, name_generator=None, *args, **kwargs):
+        self.window = window  # <--- 【关键修复】手动保存 window 引用
+        self.name_generator = name_generator
+        super().__init__(canvas, window, *args, **kwargs)
+
+    def save_figure(self, *args):
+        """重写保存按钮逻辑"""
+        # 1. 生成默认文件名
+        initial = "image.png"
+        if self.name_generator:
+            try: initial = self.name_generator()
+            except: pass
+
+        # 2. 弹出保存框
+        filetypes = [("PNG Image", "*.png"), ("PDF Document", "*.pdf"), ("SVG Image", "*.svg"), ("All Files", "*.*")]
+        
+        # 这里 parent=self.window 现在可以正常工作了
+        fname = filedialog.asksaveasfilename(
+            parent=self.window,
+            title="Save Image (Transparent BG)",
+            initialfile=initial,
+            defaultextension=".png",
+            filetypes=filetypes
+        )
+
+        if fname:
+            try:
+                # 3. [关键] 强制 transparent=True
+                self.canvas.figure.savefig(fname, transparent=True)
+                # 可选：如果需要在保存后提示成功，可以在这里加 messagebox
+            except Exception as e:
+                messagebox.showerror("Save Error", str(e))
 
 class PlotManager:
     def __init__(self, parent_frame, app_instance):
@@ -44,14 +80,15 @@ class PlotManager:
         self.btn_draw_ref = None
 
         self.fig = plt.Figure(figsize=(5, 5), dpi=100)
-        self.fig.patch.set_facecolor('#FFFFFF')
+        # 默认背景设为白色，但保存时会变透明
+        self.fig.patch.set_facecolor('#FFFFFF') 
+        
         self.toolbar_container = ttk.Frame(self.parent, style="White.TFrame")
-        self.toolbar_container.pack(side="top", fill="x", pady=(0, 0)) # 紧贴顶部
-
+        self.toolbar_container.pack(side="top", fill="x", pady=(0, 0))
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.parent)
         self.canvas_widget = self.canvas.get_tk_widget()
-        self.canvas_widget.pack(side="top", fill="both", expand=True) # side="top" 确保在下方
+        self.canvas_widget.pack(side="top", fill="both", expand=True)
         
         self.ax = self.fig.add_subplot(111)
         self.ax.axis('off')
@@ -59,67 +96,54 @@ class PlotManager:
         self.cbar = None
         self.toolbar = None
 
-
     def apply_theme(self, bg_color, fg_color):
-        """
-        [新增] 动态切换 Matplotlib 的颜色主题
-        """
-        # 1. 设置 Figure 背景
+        """动态切换 Matplotlib 的颜色主题"""
         self.fig.patch.set_facecolor(bg_color)
-        
-        # 2. 设置 Axes 背景和边框
         self.ax.set_facecolor(bg_color)
         self.ax.spines['bottom'].set_color(fg_color)
         self.ax.spines['top'].set_color(fg_color) 
         self.ax.spines['left'].set_color(fg_color)
         self.ax.spines['right'].set_color(fg_color)
-        
-        # 3. 设置文字和刻度颜色
         self.ax.xaxis.label.set_color(fg_color)
         self.ax.yaxis.label.set_color(fg_color)
         self.ax.tick_params(axis='x', colors=fg_color)
         self.ax.tick_params(axis='y', colors=fg_color)
         self.ax.title.set_color(fg_color)
-        
-        # 4. 如果有 Colorbar，也要处理 (比较麻烦，通常重建比较好，或者只改 Label)
         if self.cbar:
             self.cbar.ax.yaxis.set_tick_params(color=fg_color, labelcolor=fg_color)
             self.cbar.ax.yaxis.label.set_color(fg_color)
         
-        # 5. [修改] 更新 Toolbar 背景
-        # 我们不使用传入的 plot_bg (太黑了)，而是去 app 里拿 toolbar_bg
         if self.toolbar:
             try:
                 mode = self.app.current_theme
                 c = self.app.THEME_COLORS[mode]
                 tb_bg = c.get("toolbar_bg", "#F0F0F0")
-                
                 self.toolbar.config(background=tb_bg)
-                # 坐标显示区域
                 self.toolbar._message_label.config(background=tb_bg, foreground="black")
             except: pass
-
         self.canvas.draw_idle()
 
-
-
-    def add_toolbar(self, parent_frame=None): # parent_frame 参数变为可选，兼容旧代码防止报错
-        # 如果外部没传 parent (我们在 gui.py 里改成不传了)，就用内部创建的顶部容器
+    def add_toolbar(self, parent_frame=None): 
         target_frame = parent_frame if parent_frame else self.toolbar_container
-
-        # 清理旧内容
         for child in target_frame.winfo_children():
             child.destroy()
             
-        self.toolbar = NavigationToolbar2Tk(self.canvas, target_frame)
+        # [修改] 使用自定义工具栏 RiaToolbar
+        # 定义主视图的命名规则: Snap_[ViewMode]_Frame[X].png
+        def get_snap_name():
+            try:
+                mode = self.app.view_mode
+                frame = self.app.var_frame.get()
+                return f"Snap_{mode}_Frame{frame}.png"
+            except:
+                return "Snap_Image.png"
+
+        self.toolbar = RiaToolbar(self.canvas, target_frame, name_generator=get_snap_name)
         
-        # 样式配置 (保持不变)
         try:
             mode = self.app.current_theme
             c = self.app.THEME_COLORS[mode]
             bg_color = c.get("toolbar_bg", "#F0F0F0") 
-            
-            # 强制去掉 Matplotlib 工具栏自带的边框，使其更融合
             self.toolbar.config(background=bg_color, highlightthickness=0, bd=0)
             self.toolbar._message_label.config(background=bg_color, foreground="black")
         except:
@@ -131,14 +155,11 @@ class PlotManager:
         self.fig.clear() 
         self.ax = self.fig.add_subplot(111)
         self.ax.axis('off')
-
         try:
             mode = self.app.current_theme
             c = self.app.THEME_COLORS[mode]
             self.fig.patch.set_facecolor(c["plot_bg"])
         except: pass
-
-
         self.im_object = None
         self.cbar = None
         if logo_path and os.path.exists(logo_path):
@@ -195,13 +216,11 @@ class RoiManager:
         self.roi_list = [] 
         self.temp_roi = None
         
-        # 直线交互状态
         self.line_start_pt = None
         self.temp_line_artist = None
         self.dragging_roi = None       
-        self.dragging_point_idx = -1   # 0=起点, 1=终点, 2=中点(平移)
+        self.dragging_point_idx = -1   
         
-        # 事件连接 ID
         self.cid_press = None
         self.cid_release = None
         self.cid_motion = None
@@ -222,12 +241,7 @@ class RoiManager:
         self.temp_roi = None
         self._stop_selector()
 
-    # =========================================================
-    #  逻辑控制
-    # =========================================================
-
     def set_mode(self, mode):
-        """切换 ROI 模式"""
         if self.temp_roi: self._commit_temp_roi()
         self._stop_selector(clear_events=True)
         self.current_shape_mode = mode
@@ -241,7 +255,6 @@ class RoiManager:
             self.app.root.config(cursor="")
 
     def cancel_drawing(self):
-        """ESC 键按下时调用"""
         self.line_start_pt = None
         if self.temp_line_artist:
             self.temp_line_artist.remove()
@@ -279,15 +292,13 @@ class RoiManager:
 
     def start_drawing(self, mode=None, is_background=False):
         if not self.ax_ref: return
-        
         target_mode = mode if mode else self.current_shape_mode
         self.set_mode(target_mode)
         
         self.is_drawing_bg = is_background 
         if self.btn_draw_ref: self.btn_draw_ref.state(['selected']) 
         
-        if self.current_shape_mode == "line":
-            return
+        if self.current_shape_mode == "line": return
 
         if self.is_drawing_bg:
             props = dict(facecolor='black', edgecolor='gray', alpha=0.3, linestyle=':', linewidth=1, fill=True)
@@ -306,12 +317,7 @@ class RoiManager:
         elif self.current_shape_mode == "polygon":
             self.selector = PolygonSelector(self.ax_ref, self._on_poly_finalize, useblit=True, props=line_props)
 
-        if self.selector:
-            self.selector.set_active(True)
-
-    # =========================================================
-    #  直线交互逻辑 (支持平移与视觉增强)
-    # =========================================================
+        if self.selector: self.selector.set_active(True)
 
     def _on_line_press(self, event):
         if event.inaxes != self.ax_ref: return
@@ -322,30 +328,22 @@ class RoiManager:
         min_dist = float('inf')
         target_roi = None
         pt_idx = -1 
-        
-        threshold = 30.0 # 拾取阈值
+        threshold = 30.0 
         
         for roi in self.roi_list:
             if roi['type'] == 'line':
                 p1, p2 = roi['params']
-                
-                # 计算端点距离
                 d1 = np.hypot(p1[0]-click_pt[0], p1[1]-click_pt[1])
                 d2 = np.hypot(p2[0]-click_pt[0], p2[1]-click_pt[1])
-                
-                # 计算中点距离 (平移手柄)
                 mid_pt = ((p1[0]+p2[0])/2, (p1[1]+p2[1])/2)
                 d_mid = np.hypot(mid_pt[0]-click_pt[0], mid_pt[1]-click_pt[1])
                 
-                # 优先检测端点，其次检测中点
                 if d1 < threshold and d1 < min_dist:
                     min_dist = d1; target_roi = roi; pt_idx = 0
                 if d2 < threshold and d2 < min_dist:
                     min_dist = d2; target_roi = roi; pt_idx = 1
-                
-                # 如果没点中端点，但点中了中间 (距离稍微放宽一点)
                 if pt_idx == -1 and d_mid < threshold and d_mid < min_dist:
-                    min_dist = d_mid; target_roi = roi; pt_idx = 2 # 2 代表中点
+                    min_dist = d_mid; target_roi = roi; pt_idx = 2 
         
         if target_roi:
             self.dragging_roi = target_roi
@@ -357,40 +355,31 @@ class RoiManager:
     def _on_line_drag(self, event):
         if event.inaxes != self.ax_ref: return
         
-        # A. 拖动模式
         if self.dragging_roi:
             p1, p2 = self.dragging_roi['params']
             new_pt = (event.xdata, event.ydata)
             
-            # 0=起点, 1=终点, 2=平移
             if self.dragging_point_idx == 0:
                 self.dragging_roi['params'] = (new_pt, p2)
             elif self.dragging_point_idx == 1:
                 self.dragging_roi['params'] = (p1, new_pt)
             elif self.dragging_point_idx == 2:
-                # 平移逻辑：计算中点位移量
                 mid_old = ((p1[0]+p2[0])/2, (p1[1]+p2[1])/2)
                 dx = new_pt[0] - mid_old[0]
                 dy = new_pt[1] - mid_old[1]
-                
                 new_p1 = (p1[0] + dx, p1[1] + dy)
                 new_p2 = (p2[0] + dx, p2[1] + dy)
                 self.dragging_roi['params'] = (new_p1, new_p2)
 
-            # 更新视觉 (Line + Circles)
-            # patch_group 结构: [bg_line, fg_line, c_start, c_end, c_mid]
             group = self.dragging_roi['patch_group']
             bg_line, fg_line = group[0], group[1]
-            c_start, c_end, c_mid = group[2], group[3], group[4] # 取出圆点
+            c_start, c_end, c_mid = group[2], group[3], group[4]
             
             curr_p1, curr_p2 = self.dragging_roi['params']
             curr_mid = ((curr_p1[0]+curr_p2[0])/2, (curr_p1[1]+curr_p2[1])/2)
             
-            # 更新线
             bg_line.set_data([curr_p1[0], curr_p2[0]], [curr_p1[1], curr_p2[1]])
             fg_line.set_data([curr_p1[0], curr_p2[0]], [curr_p1[1], curr_p2[1]])
-            
-            # 更新圆点位置
             c_start.center = curr_p1
             c_end.center = curr_p2
             c_mid.center = curr_mid
@@ -401,11 +390,9 @@ class RoiManager:
                 self.app.update_kymograph_for_roi(self.dragging_roi)
             return
 
-        # B. 画新线预览
         if self.line_start_pt:
             x0, y0 = self.line_start_pt
             x1, y1 = event.xdata, event.ydata
-            
             if self.temp_line_artist: self.temp_line_artist.remove()
             self.temp_line_artist = mlines.Line2D([x0, x1], [y0, y1], color='yellow', linestyle='--')
             self.ax_ref.add_line(self.temp_line_artist)
@@ -442,11 +429,7 @@ class RoiManager:
                     }
                     self.roi_list.append(new_roi)
                     self.app.plot_mgr.canvas.draw_idle()
-                    # 移除自动弹窗
-            
             self.line_start_pt = None
-
-    # =========================================================
 
     def _update_temp_roi_data(self, extents):
         xmin, xmax, ymin, ymax = extents
@@ -497,17 +480,10 @@ class RoiManager:
             (x1, y1), (x2, y2) = params
             mid_pt = ((x1+x2)/2, (y1+y2)/2)
             
-            # 1. 线条
             line_bg = mlines.Line2D([x1, x2], [y1, y2], color='white', linewidth=3, alpha=0.8)
             line_fg = mlines.Line2D([x1, x2], [y1, y2], color=color, linewidth=1.5, linestyle='-')
-            
-            # 2. [新增] 端点圆圈 (起点, 终点)
-            # 半径设为 4 (数据坐标系下的半径，如果图像很大可能需要调整，或者改用 Marker)
-            # 这里使用 Circle patch，它会随着 zoom 缩放
             c_start = Circle((x1, y1), radius=4, color=color, alpha=0.6)
             c_end   = Circle((x2, y2), radius=4, color=color, alpha=0.6)
-            
-            # 3. [新增] 中点圆圈 (用于平移)
             c_mid   = Circle(mid_pt, radius=3, color='white', alpha=0.9, linewidth=1, edgecolor='black')
 
             self.ax_ref.add_line(line_bg)
@@ -515,8 +491,6 @@ class RoiManager:
             self.ax_ref.add_patch(c_start)
             self.ax_ref.add_patch(c_end)
             self.ax_ref.add_patch(c_mid)
-            
-            # 返回顺序很重要，拖动更新时会用到
             return [line_bg, line_fg, c_start, c_end, c_mid]
 
         fill_alpha = 0.6
@@ -535,8 +509,7 @@ class RoiManager:
             patches.append(Polygon(params, linewidth=3, edgecolor='white', facecolor='none', linestyle='-', closed=True))
             patches.append(Polygon(params, linewidth=2, edgecolor='black', facecolor='none', linestyle='--', closed=True))
             
-        for p in patches:
-            self.ax_ref.add_patch(p)
+        for p in patches: self.ax_ref.add_patch(p)
         return patches
 
     def _commit_temp_roi(self):
@@ -828,14 +801,7 @@ class RoiManager:
         except Exception as e:
             tk.messagebox.showerror("Error", f"Failed to calc background: {e}")
 
-    # =========================================================
-    #  [新增] 支持工程文件保存/加载的接口
-    # =========================================================
-
     def get_all_rois_data(self):
-        """
-        获取当前所有 ROI 的纯数据列表（用于保存到 Project 文件）。
-        """
         if self.temp_roi: self._commit_temp_roi()
         self._stop_selector()
         
@@ -843,7 +809,6 @@ class RoiManager:
         for roi in self.roi_list:
             item = {"type": roi['type'], "color": roi['color'], "id": roi['id']}
             if roi['type'] == "polygon": 
-                # numpy array 转 list 以便 JSON 序列化
                 item["params"] = np.array(roi['params']).tolist() 
             else: 
                 item["params"] = roi['params']
@@ -851,44 +816,27 @@ class RoiManager:
         return data_list
 
     def restore_rois_from_data(self, data_list):
-        """
-        从数据列表恢复 ROI（用于从 Project 文件加载）。
-        """
         if self.app.data1 is None:
-            # 如果没有加载图像，无法计算 Mask，因此无法恢复 ROI
             print("Warning: Cannot restore ROIs. No image data loaded.")
             return
-
-        # 清除现有 ROI
         self.clear_all() 
-
-        if not isinstance(data_list, list):
-            return
-
+        if not isinstance(data_list, list): return
         for item in data_list:
             try:
                 rtype = item["type"]
                 params = item["params"]
                 color = item.get("color", ROI_COLORS[0])
-
-                # 参数类型转换 (JSON 加载回来通常是 list，需要转回 tuple 或 numpy)
                 if rtype == "polygon": 
                     params = np.array(params)
                 else:
                     params = tuple(params)
-                    # 特殊处理圆形的参数结构: ((x,y), w, h)
                     if rtype == "circle": 
                         params = (tuple(params[0]), params[1], params[2])
-
-                # 生成 Mask
                 mask = None
                 if rtype != "line":
                     mask = self._generate_mask(rtype, params)
                     if mask is None: continue
-
-                # 创建视觉元素
                 patch_group = self._create_high_contrast_roi(rtype, params, color)
-                
                 if patch_group:
                     self.roi_list.append({
                         'type': rtype,
@@ -900,5 +848,4 @@ class RoiManager:
                     })
             except Exception as e: 
                 print(f"Error restoring ROI: {e}")
-        
         self.app.plot_mgr.canvas.draw_idle()

@@ -4,6 +4,7 @@ from tkinter import ttk, Toplevel
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import numpy as np
+from gui_components import RiaToolbar
 
 # --- Define Color Palettes ---
 COLOR_PALETTES = {
@@ -187,12 +188,22 @@ class ROIPlotWindow:
         self.canvas = FigureCanvasTkAgg(self.fig, master=plot_frame)
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
         
-        # [修改] 创建并配置 Toolbar
-        self.toolbar = NavigationToolbar2Tk(self.canvas, plot_frame)
+        # =========================================================
+        # [修改] 使用自定义 RiaToolbar 替换默认工具栏
+        # =========================================================
+        # 定义命名规则: Curve_Analysis_[Mode].png
+        def get_curve_name():
+            # 动态获取当前的 plot_mode (如 ratio, num, combo...)
+            return f"Curve_Analysis_{self.plot_mode}.png"
+
+        self.toolbar = RiaToolbar(self.canvas, plot_frame, name_generator=get_curve_name)
+        
+        # 配置工具栏颜色 (适配深色模式)
         tb_bg = self.current_theme_colors.get("toolbar_bg", "#F0F0F0")
         self.toolbar.config(background=tb_bg)
         self.toolbar._message_label.config(background=tb_bg, foreground="black")
         self.toolbar.update()
+        # =========================================================
         
         # 2. 底部：控制面板区 (Main Container)
         ctrl_frame = ttk.Frame(self.window, padding=5)
@@ -247,6 +258,8 @@ class ROIPlotWindow:
 
         # 首次创建时应用颜色
         self.apply_theme(self.current_theme_colors)
+
+
 
     def _rebuild_channel_buttons(self):
         """根据数据动态生成通道按钮"""

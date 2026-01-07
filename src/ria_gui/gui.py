@@ -20,19 +20,19 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 try:
     from .constants import LANG_MAP
     from .components import ToggledFrame
-    # [清理后] 删除了 io_utils 的导入，GUI 不应该直接碰 IO，全部交给 Model
-    from .gui_components import PlotManager, RoiManager
+    # [修改] 导入 RiaToolbar
+    from .gui_components import PlotManager, RoiManager, RiaToolbar
     from .model import AnalysisSession
-
 except ImportError:
     try:
         from constants import LANG_MAP
         from components import ToggledFrame
-        from gui_components import PlotManager, RoiManager
+        # [修改] 导入 RiaToolbar
+        from gui_components import PlotManager, RoiManager, RiaToolbar
         from model import AnalysisSession
-
     except ImportError as e:
         print(f"Import Error: {e}. Ensure all modules exist.")
+
 
 try:
     from ._version import __version__
@@ -58,10 +58,8 @@ class KymographWindow:
         self.is_open = True
         self.window.protocol("WM_DELETE_WINDOW", self.on_close)
         
-        # --- Data Cache ---
         self.raw_data = None
         
-        # --- UI Variables ---
         self.var_um_px = tk.DoubleVar(value=1.0)
         self.var_s_frame = tk.DoubleVar(value=1.0)
         self.var_frame_start = tk.IntVar(value=0)
@@ -71,7 +69,6 @@ class KymographWindow:
         self.var_log = tk.BooleanVar(value=False)
 
         # --- Layout ---
-        # 1. Plot Area
         plot_frame = ttk.Frame(self.window)
         plot_frame.pack(side="top", fill="both", expand=True)
         
@@ -80,14 +77,18 @@ class KymographWindow:
         self.canvas = FigureCanvasTkAgg(self.fig, master=plot_frame)
         self.canvas.get_tk_widget().pack(side="top", fill="both", expand=True)
         
-        self.toolbar = NavigationToolbar2Tk(self.canvas, plot_frame)
+        # [修改] 使用自定义工具栏 RiaToolbar
+        # 定义命名规则: Kymo_ROI_[ID].png
+        def get_kymo_name():
+            return f"Kymo_ROI_{self.roi_id}.png"
+
+        self.toolbar = RiaToolbar(self.canvas, plot_frame, name_generator=get_kymo_name)
         self.toolbar.update()
         
         self.im_obj = None 
         self.cbar = None
-        self.cax = None # [新增] 专门用于存放 Colorbar 的坐标轴，防止主图缩小
+        self.cax = None 
 
-        # 2. Control Panel
         ctrl_panel = ttk.Frame(self.window, padding=5, style="Card.TFrame")
         ctrl_panel.pack(side="bottom", fill="x")
         
@@ -669,9 +670,7 @@ class RatioAnalyzerApp:
         # 头部样式 (Header)
         style.configure("Header.TFrame", background=c["card"])
         
-        # [核心修改] 标题专用样式 (Title.TLabel)
-        # 1. 背景色设为 c["card"]，与 Header 背景融合，实现“伪透明”
-        # 2. 前景色：浅色模式用深蓝灰(#2c3e50)显得专业，深色模式用纯白(#FFFFFF)
+        # 标题专用样式 (Title.TLabel)
         title_fg = "#2c3e50" if mode == "light" else "#FFFFFF"
         style.configure("Title.TLabel", background=c["card"], foreground=title_fg)
 
@@ -696,6 +695,17 @@ class RatioAnalyzerApp:
         style.configure("Toolbutton", background=c["card"], foreground=c["text"])
         style.map("Toolbutton", background=[("selected", c["input_bg"])], foreground=[("selected", c["accent"])])
         
+        # [新增] 选项卡样式 (Notebook Tabs)
+        # 默认背景设为 card 颜色，Tab 默认设为 input_bg (浅灰)
+        style.configure("TNotebook", background=c["card"], borderwidth=0)
+        style.configure("TNotebook.Tab", background=c["input_bg"], foreground=c["text"], padding=[12, 3])
+        
+        # 选中状态映射：背景变强调色(蓝)，文字变白
+        style.map("TNotebook.Tab",
+            background=[("selected", c["accent"]), ("active", c["card"])],
+            foreground=[("selected", "white")]
+        )
+        
         # 徽章
         style.configure("BadgeOrange.TLabel", background="#fd7e14", foreground="white")
         style.configure("BadgeBlue.TLabel", background=c["accent"], foreground="white")
@@ -707,8 +717,6 @@ class RatioAnalyzerApp:
         style.configure("Blue.Toolbutton", foreground=c["accent"])
 
         self.style = style
-
-
 
 
 
@@ -941,16 +949,14 @@ class RatioAnalyzerApp:
     def _on_metadata_ready(self, meta_res):
         is_explicit, channels, z, axes = meta_res
         
-        # 1. 更新 Model 层缓存
+        # 1. Update Model Cache
         self.cached_z_count = z
         
-        # 2. 自动填充 Axes 输入框 (这会触发 _on_axes_change 更新 Z-Proj UI)
+        # 2. Auto-fill Axes Entry
         if hasattr(self, 'var_axes_entry'):
             self.var_axes_entry.set(axes)
 
-        # 3. [核心修复] 对所有旧组件增加 hasattr 检查
-        # 只有当组件真的存在时，才去修改它的状态
-        
+        # 3. Update UI Components
         if hasattr(self, 'is_interleaved_var'):
             if is_explicit: self.is_interleaved_var.set(False)
 
@@ -962,15 +968,60 @@ class RatioAnalyzerApp:
             state = "disabled" if is_explicit else "normal"
             self.sp_channels.config(state=state)
             
-        # 恢复 UI 状态
+        # --- Visual Feedback: Ready State (End) ---
+        # 1. 恢复鼠标光标
+        self.root.config(cursor="")
+        
+        # 2. 移除文件名旁边的沙漏 (根据当前 Tab 判断更新哪个 Label)
+        current_tab = self.nb_import.index("current")
+        if current_tab == 0 and hasattr(self, 'raw_path') and self.raw_path:
+             self.lbl_raw_path.config(text=os.path.basename(self.raw_path))
+        elif current_tab == 1 and hasattr(self, 'tiff_path') and self.tiff_path:
+             self.lbl_tiff_path.config(text=os.path.basename(self.tiff_path))
+
+        # 3. 状态栏变绿
         self.lbl_status.config(text="✔ Ready.", foreground="green")
         
-        # 激活 Load 按钮
+        # 4. 恢复按钮文字
+        self.btn_load.config(text="🚀 Load & Analyze")
+        
+        # 5. 【关键】此时才激活 Load 按钮
         self.check_ready() 
         
         # 1秒后清除 Ready 文字
         self.root.after(2000, lambda: self.lbl_status.config(text=""))
 
+
+
+    def _on_metadata_error(self, error_msg):
+        # 1. 恢复鼠标光标
+        self.root.config(cursor="")
+        
+        # 2. 移除沙漏 (简单处理：尝试刷新当前显示的路径)
+        try:
+            current_tab = self.nb_import.index("current")
+            if current_tab == 0 and hasattr(self, 'raw_path') and self.raw_path:
+                self.lbl_raw_path.config(text=os.path.basename(self.raw_path))
+            elif current_tab == 1 and hasattr(self, 'tiff_path') and self.tiff_path:
+                self.lbl_tiff_path.config(text=os.path.basename(self.tiff_path))
+        except: pass
+
+        # 3. 恢复按钮文字并禁用
+        self.btn_load.config(text="🚀 Load & Analyze", state="disabled")
+        
+        # 4. 状态栏变红
+        self.lbl_status.config(text="❌ Error reading metadata.", foreground="red")
+
+        # 5. 停止可能的进度条
+        if hasattr(self, 'pb_loading'):
+            self.pb_loading.stop()
+            self.pb_loading.pack_forget()
+            self.btn_load.pack(fill="both", expand=True)
+            self._reset_load_button()
+
+        messagebox.showerror("Metadata Error", f"Failed to read file info:\n{error_msg}")
+        import traceback
+        traceback.print_exc()
 
 
     def save_input_thread(self):
@@ -1681,43 +1732,37 @@ class RatioAnalyzerApp:
         # 1. 获取当前 Tab 索引
         current_tab = self.nb_import.index("current")
         
-        # 2. 【核心修复】根据新 Tab 逻辑校验路径
-        # 必须确保当前 Tab 有对应的文件路径，否则直接返回
-        if current_tab == 0 and not getattr(self, 'raw_path', None): 
-            print("[Load] Tab 0: No raw path selected.")
-            return
-            
-        if current_tab == 1 and not getattr(self, 'tiff_path', None): 
-            print("[Load] Tab 1: No tiff path selected.")
-            return
-            
-        if current_tab == 2 and len(getattr(self, 'sep_file_paths', [])) < 2:
-            print("[Load] Tab 2: Not enough files.")
-            return
+        # 2. 校验路径
+        if current_tab == 0 and not getattr(self, 'raw_path', None): return
+        if current_tab == 1 and not getattr(self, 'tiff_path', None): return
+        if current_tab == 2 and len(getattr(self, 'sep_file_paths', [])) < 2: return
 
-        # UI 切换为加载状态
+        # --- Visual Change: Button -> Active Progress Bar ---
+        # 隐藏加载按钮
         self.btn_load.pack_forget()
-        self.pb_loading.pack(fill="both", expand=True)
-        self.pb_loading["value"] = 0
+        
+        # 显示进度条 (位置参数与 btn_load 保持完全一致，确保无缝切换)
+        self.pb_loading.pack(side="left", fill="both", expand=True, padx=(0, 2))
+        
+        # 【关键】设置为"不确定模式"(左右来回滚动)，让用户知道程序是活的
+        self.pb_loading.configure(mode='indeterminate')
+        self.pb_loading.start(15) # 数字越小滚动越快
+        
         self.root.update()
 
         # 3. 收集参数
         params = {
             "tab_idx": current_tab,
-            "z_method": None, # 默认为 None
+            "z_method": None, 
             "on_success_cb": on_success, 
             "predefined_roles": predefined_roles,
             "user_axes": None 
         }
 
-        # [Tab 1 专用] 收集用户手动输入的 Axes
         if current_tab == 1 and hasattr(self, 'var_axes_entry'):
             raw_axes = self.var_axes_entry.get().strip().upper()
-            if raw_axes and raw_axes != "?":
-                params["user_axes"] = raw_axes
+            if raw_axes and raw_axes != "?": params["user_axes"] = raw_axes
 
-        # [核心修复] 收集 Z-Projection 设置
-        # 不再检查控件 state，直接信赖变量值
         if hasattr(self, 'z_proj_var'):
             val = self.z_proj_var.get()
             if val:
@@ -1725,72 +1770,124 @@ class RatioAnalyzerApp:
                 elif "Ave" in val: params["z_method"] = "ave"
                 elif "None" in val: params["z_method"] = None 
                 
-        print(f"[GUI Debug] Loading Tab {current_tab}. Z-Method to apply: {params['z_method']}")
-
         # 4. 启动后台线程
         threading.Thread(target=self._load_data_thread, args=(params,), daemon=True).start()
+
 
 
     def setup_file_group(self):
         # [紧凑] padding=5
         self.grp_file = ttk.LabelFrame(self.frame_left, text="1. File Loading", padding=5, style="Card.TLabelframe")
-        self.grp_file.pack(fill="x", pady=(0, 5)) # [紧凑] pady=5
+        self.grp_file.pack(fill="x", pady=(0, 5))
         self.ui_elements["grp_file"] = self.grp_file
-        
-        # ... (内部代码保持不变，只需复制之前的逻辑) ...
-        # 为了方便，我把关键布局代码贴在下面，你替换整个方法即可：
         
         self.nb_import = ttk.Notebook(self.grp_file)
         self.nb_import.pack(fill="x", expand=True)
         self.nb_import.bind("<<NotebookTabChanged>>", lambda e: self.check_ready())
         
-        self.tab_raw = ttk.Frame(self.nb_import, style="White.TFrame", padding=5); self.nb_import.add(self.tab_raw, text="Raw")
-        f_raw = ttk.Frame(self.tab_raw, style="White.TFrame"); f_raw.pack(fill="x", pady=2) # pady减小
-        self.btn_raw = ttk.Button(f_raw, text="📂 Select Raw", command=self.select_raw_file); self.btn_raw.pack(side="left")
-        self.lbl_raw_path = ttk.Label(f_raw, text="...", foreground="gray", style="White.TLabel"); self.lbl_raw_path.pack(side="left", padx=5, fill="x", expand=True)
+        # === Tab 0: Raw (已优化：网格化对齐排版) ===
+        self.tab_raw = ttk.Frame(self.nb_import, style="White.TFrame", padding=5)
+        self.nb_import.add(self.tab_raw, text="Raw")
+        
+        # 第一行：按钮和路径
+        f_raw = ttk.Frame(self.tab_raw, style="White.TFrame")
+        f_raw.pack(fill="x", pady=(0, 2)) # 减少下方间距，为提示语腾空间
+        
+        self.btn_raw = ttk.Button(f_raw, text="📂 Select Raw", command=self.select_raw_file)
+        self.btn_raw.pack(side="left")
+        
+        self.lbl_raw_path = ttk.Label(f_raw, text="...", foreground="gray", style="White.TLabel")
+        self.lbl_raw_path.pack(side="left", padx=5, fill="x", expand=True)
+        
+        # [新增] 第二行：网格化提示区域 (Grid Layout)
+        f_hints = ttk.Frame(self.tab_raw, style="White.TFrame")
+        f_hints.pack(fill="x", padx=2)
 
-        self.tab_tiff = ttk.Frame(self.nb_import, style="White.TFrame", padding=5); self.nb_import.add(self.tab_tiff, text="Standard Tiff")
-        f_tiff = ttk.Frame(self.tab_tiff, style="White.TFrame"); f_tiff.pack(fill="x", pady=2)
-        self.btn_tiff = ttk.Button(f_tiff, text="📂 Select Tiff", command=self.select_tiff_file); self.btn_tiff.pack(side="left")
-        self.lbl_tiff_path = ttk.Label(f_tiff, text="...", foreground="gray", style="White.TLabel"); self.lbl_tiff_path.pack(side="left", padx=5, fill="x", expand=True)
+        # 定义通用小字样式
+        hint_style = {"font": ("Segoe UI", 10), "foreground": "#999999", "style": "White.TLabel"}
 
-        self.tab_sep = ttk.Frame(self.nb_import, style="White.TFrame", padding=5); self.nb_import.add(self.tab_sep, text="Separate Files")
-        self.lst_files = tk.Listbox(self.tab_sep, height=3, selectmode="extended", bg="white", fg="black"); self.lst_files.pack(side="top", fill="both", expand=True, pady=(0, 2))
+        # Row 0: 标题
+        ttk.Label(f_hints, text="Supports:", **hint_style).grid(row=0, column=0, sticky="w", columnspan=2, pady=(0, 1))
+
+        # Row 1: 第一排厂商
+        ttk.Label(f_hints, text="• .oir (Olympus)", **hint_style).grid(row=1, column=0, sticky="w", padx=(10, 5))
+        ttk.Label(f_hints, text="• .nd2 (Nikon)", **hint_style).grid(row=1, column=1, sticky="w")
+
+        # Row 2: 第二排厂商
+        ttk.Label(f_hints, text="• .czi (Zeiss)", **hint_style).grid(row=2, column=0, sticky="w", padx=(10, 5))
+        ttk.Label(f_hints, text="• .lif (Leica)", **hint_style).grid(row=2, column=1, sticky="w") # 修正了 Leice -> Leica
+
+        # Row 3: 兜底说明
+        ttk.Label(f_hints, text="& 160+ formats (Bio-Formats)", **hint_style).grid(row=3, column=0, columnspan=2, sticky="w", padx=(10, 0), pady=(1, 0))
+
+
+        # === Tab 1: Standard Tiff ===
+        self.tab_tiff = ttk.Frame(self.nb_import, style="White.TFrame", padding=5)
+        self.nb_import.add(self.tab_tiff, text="Standard Tiff")
+        f_tiff = ttk.Frame(self.tab_tiff, style="White.TFrame")
+        f_tiff.pack(fill="x", pady=2)
+        self.btn_tiff = ttk.Button(f_tiff, text="📂 Select Tiff", command=self.select_tiff_file)
+        self.btn_tiff.pack(side="left")
+        self.lbl_tiff_path = ttk.Label(f_tiff, text="...", foreground="gray", style="White.TLabel")
+        self.lbl_tiff_path.pack(side="left", padx=5, fill="x", expand=True)
+
+        # === Tab 2: Separate Files ===
+        self.tab_sep = ttk.Frame(self.nb_import, style="White.TFrame", padding=5)
+        self.nb_import.add(self.tab_sep, text="Separate Files")
+        self.lst_files = tk.Listbox(self.tab_sep, height=3, selectmode="extended", bg="white", fg="black")
+        self.lst_files.pack(side="top", fill="both", expand=True, pady=(0, 2))
         self.sep_file_paths = []
-        btn_bar = ttk.Frame(self.tab_sep, style="White.TFrame"); btn_bar.pack(side="top", fill="x")
+        btn_bar = ttk.Frame(self.tab_sep, style="White.TFrame")
+        btn_bar.pack(side="top", fill="x")
         ttk.Button(btn_bar, text="➕ Add", width=8, command=self.add_separate_files).pack(side="left", padx=1)
         ttk.Button(btn_bar, text="➖ Del", width=8, command=self.remove_separate_file).pack(side="left", padx=1)
         ttk.Button(btn_bar, text="Clear", width=8, command=self.clear_separate_files).pack(side="left", padx=1)
 
-        self.tab_proj = ttk.Frame(self.nb_import, style="White.TFrame", padding=5); self.nb_import.add(self.tab_proj, text="Project")
+        # === Tab 3: Project ===
+        self.tab_proj = ttk.Frame(self.nb_import, style="White.TFrame", padding=5)
+        self.nb_import.add(self.tab_proj, text="Project")
         ttk.Button(self.tab_proj, text="📂 Load Project (.ria)", command=self.load_project_dialog).pack(fill="x", pady=(2, 2))
         ttk.Button(self.tab_proj, text="💾 Save Current Project", command=self.save_project_dialog).pack(fill="x", pady=(2, 2))
 
+        # === 下方公共区域 ===
         f_opts = ttk.Frame(self.grp_file, style="White.TFrame")
         f_opts.pack(fill="x", pady=(5, 0))
         ttk.Label(f_opts, text="Axes:", style="White.TLabel").pack(side="left")
         self.var_axes_entry = tk.StringVar(value="?")
         self.var_axes_entry.trace("w", self._on_axes_change) 
         ttk.Entry(f_opts, textvariable=self.var_axes_entry, width=8).pack(side="left", padx=2)
-        self.lbl_ch_indicator = ttk.Label(f_opts, text="", style="White.TLabel"); self.lbl_ch_indicator.pack(side="left", padx=2)
-        self.lbl_z_indicator = ttk.Label(f_opts, text="", style="White.TLabel"); self.lbl_z_indicator.pack(side="left", padx=2)
-        self.lbl_z_proj = ttk.Label(f_opts, text="Z-Proj:", state="disabled", style="White.TLabel"); self.lbl_z_proj.pack(side="left", padx=(5, 2))
+        self.lbl_ch_indicator = ttk.Label(f_opts, text="", style="White.TLabel")
+        self.lbl_ch_indicator.pack(side="left", padx=2)
+        self.lbl_z_indicator = ttk.Label(f_opts, text="", style="White.TLabel")
+        self.lbl_z_indicator.pack(side="left", padx=2)
+        self.lbl_z_proj = ttk.Label(f_opts, text="Z-Proj:", state="disabled", style="White.TLabel")
+        self.lbl_z_proj.pack(side="left", padx=(5, 2))
         self.z_proj_var = tk.StringVar()
         self.combo_z_proj = ttk.Combobox(f_opts, textvariable=self.z_proj_var, values=["Max (MIP)", "Ave (AIP)", "None"], state="disabled", width=10)
         self.combo_z_proj.pack(side="left")
 
-        f_actions = ttk.Frame(self.grp_file, style="Card.TFrame"); f_actions.pack(fill="x", pady=(5, 0)) # pady减小
+        f_actions = ttk.Frame(self.grp_file, style="Card.TFrame")
+        f_actions.pack(fill="x", pady=(5, 0))
+        
+        # 初始状态：显示按钮 (Load)
         self.btn_load = ttk.Button(f_actions, command=self.load_data, state="disabled", text="🚀 Load & Analyze")
         self.btn_load.pack(side="left", fill="both", expand=True, padx=(0, 2))
+        
         self.btn_clear_data = ttk.Button(f_actions, text="🗑", width=4, command=self.clear_all_data, style="Gray.TButton")
         self.btn_clear_data.pack(side="right", fill="y")
         
+        # 预创建进度条 (默认隐藏)
         self.pb_loading = ttk.Progressbar(f_actions, orient="horizontal", mode="determinate")
+        
         self.lbl_status = ttk.Label(self.grp_file, text="", font=("Segoe UI", 8), foreground="#007acc", style="White.TLabel")
         self.lbl_status.pack(fill="x", pady=(2, 0))
+        
+        # 默认选中 Standard Tiff (Tab 1)
         self.nb_import.select(1)
-
-
+    
+    
+    
+    
     # 2. 新增 Tab 2 的 Listbox 辅助方法
     def add_separate_files(self):
         files = filedialog.askopenfilenames(filetypes=[("Tiff Files", "*.tif *.tiff"), ("All", "*.*")])
@@ -1817,18 +1914,38 @@ class RatioAnalyzerApp:
         p = filedialog.askopenfilename(filetypes=[("Bio-Formats", "*.oir *.nd2 *.czi *.lif"), ("All", "*.*")])
         if p:
             self.raw_path = p
-            self.lbl_raw_path.config(text=os.path.basename(p))
-            # 【修复】调用 Metadata 检查，自动填充 Z-Proj 和 Axes
-            self.check_ready() # 先激活按钮状态
+            basename = os.path.basename(p)
+            
+            # --- Visual Feedback: Busy State (Start) ---
+            # 1. 鼠标变沙漏
+            self.root.config(cursor="watch")
+            
+            # 2. 文件名加沙漏前缀
+            self.lbl_raw_path.config(text=f"⏳ {basename}")
+            
+            # 3. 禁用按钮并修改文字
+            self.btn_load.config(state="disabled", text="⏳ Checking...")
+            
+            # 4. 状态栏显示橙色提示
+            self.lbl_status.config(text="Initializing Bio-Formats Reader... (JVM Startup)", foreground="#e67e22")
+
+            # --- Start Thread ---
+            # 注意：这里不再调用 check_ready，而是等 metadata 回调后再调用
             threading.Thread(target=self._metadata_task, args=(p,), daemon=True).start()
 
     def select_tiff_file(self):
         p = filedialog.askopenfilename(filetypes=[("Tiff", "*.tif *.tiff"), ("All", "*.*")])
         if p:
             self.tiff_path = p
-            self.lbl_tiff_path.config(text=os.path.basename(p))
-            # 【修复】调用 Metadata 检查
-            self.check_ready()
+            basename = os.path.basename(p)
+            
+            # --- Visual Feedback: Busy State (Start) ---
+            self.root.config(cursor="watch")
+            self.lbl_tiff_path.config(text=f"⏳ {basename}")
+            self.btn_load.config(state="disabled", text="⏳ Checking...")
+            self.lbl_status.config(text="Reading Tiff Tags...", foreground="#e67e22")
+
+            # --- Start Thread ---
             threading.Thread(target=self._metadata_task, args=(p,), daemon=True).start()
             
     # 4. 更新 check_ready
@@ -1905,18 +2022,17 @@ class RatioAnalyzerApp:
 
     
     def _load_data_post_process(self, raw_channels, on_success_cb=None, predefined_roles=None):
-        """
-        回到主线程：处理角色分配、绘图、恢复按钮状态。
-        """
-        self.is_loading_data = False
-        self.pb_loading["value"] = 100
+        # --- Stop Animation ---
+        self.pb_loading.stop()
+        self.pb_loading.configure(mode='determinate', value=100) # 瞬间填满，给一个完成的心理暗示
         self.root.update()
+        
+        self.is_loading_data = False
 
         try:
-            # 1. 角色分配 (Ask Roles)
+            # 1. 角色分配
             roles = None 
             if predefined_roles is not None:
-                print("Using predefined channel roles from project.")
                 roles = predefined_roles
             elif len(raw_channels) > 2:
                 self.root.config(cursor="") 
@@ -1925,37 +2041,28 @@ class RatioAnalyzerApp:
             elif len(raw_channels) == 0:
                  raise ValueError(f"No channels loaded.")
 
-            # 2. Set Data (Model 层处理)
+            # 2. Set Data
             self.session.set_data(raw_channels, roles)
             
-            # --- [UI 状态联动核心逻辑] ---
-
-            # A. 运动校正按钮：只要有数据且是多帧图像，就允许矫正
+            # --- UI Updates ---
             if self.session.data1 is not None and self.session.data1.shape[0] > 1:
                 self.btn_align.config(state="normal", text=self.t("btn_align"), style="TButton")
             else:
                 self.btn_align.config(state="disabled")
 
-            # B. 单/双通道差异化处理
             if self.session.data2 is not None:
-                # === 双通道 (Ratio) 模式 ===
                 if "lbl_ratio_thr" in self.ui_elements:
-                    self.ui_elements["lbl_ratio_thr"].config(foreground="black") # 启用比率阈值文字
+                    self.ui_elements["lbl_ratio_thr"].config(foreground="black")
                 self.view_mode = "ratio"
             else:
-                # === 单通道 (Intensity) 模式 ===
                 if "lbl_ratio_thr" in self.ui_elements:
-                    self.ui_elements["lbl_ratio_thr"].config(foreground="gray")  # 禁用比率阈值文字
+                    self.ui_elements["lbl_ratio_thr"].config(foreground="gray")
                 self.view_mode = "ratio" 
 
-            # [已删除] 旧的 btn_save_raw 控制逻辑已移除
-
-            # C. 重建通道按钮条
             self.data1_raw = None
             self.btn_undo_align.config(state="disabled", text=self.t("btn_undo_align"), style="Gray.TButton")
             self.rebuild_channel_bar()
             
-            # D. 初始化播放器
             self.frame_scale.configure(to=self.data1.shape[0]-1)
             self.var_frame.set(0); self.frame_scale.set(0)
             self.loop_start = 0
@@ -1963,47 +2070,47 @@ class RatioAnalyzerApp:
             self.var_loop_active.set(False)
             self._update_loop_label()
             
-            # E. 徽章显示
             count = len(raw_channels)
             if count == 1: 
                 self.lbl_ch_indicator.config(text=f" 1 Ch (Int) ", style="BadgeGreen.TLabel")
             else: 
                 self.lbl_ch_indicator.config(text=f" {count} Chs (Ratio) ", style="BadgeBlue.TLabel")
 
-            # F. 初始化绘图引擎
             h, w = self.data1.shape[1], self.data1.shape[2]
             self.plot_mgr.init_image((h, w), cmap="coolwarm")
             self.roi_mgr.connect(self.plot_mgr.ax)
             self.update_plot()
 
-            # G. 加载完成反馈
-            self.pb_loading.pack_forget()
+            # --- Visual Restore: Progress Bar -> Button ---
+            self.pb_loading.pack_forget() # 移除进度条
+            
+            # 恢复按钮显示 (变成绿色成功状态)
             self.btn_load.config(text="✅ Data Loaded!", style="Success.TButton", cursor="")
-            self.btn_load.pack(fill="both", expand=True) 
+            self.btn_load.pack(side="left", fill="both", expand=True, padx=(0, 2)) 
+            
             self.root.after(2000, self._reset_load_button)
 
-            # H. 执行工程恢复回调
             if on_success_cb:
-                print("Executing Project Restore Callback...")
                 on_success_cb()
 
         except Exception as e:
             self._load_data_error(str(e))
 
-
-
     def _load_data_error(self, error_msg):
-        # 停止进度条
+        # 1. 停止动画
         self.pb_loading.stop()
         self.pb_loading.pack_forget()
         
-        # 恢复按钮
-        self.btn_load.pack(fill="both", expand=True)
+        # 2. 恢复按钮 (原位显示)
+        self.btn_load.pack(side="left", fill="both", expand=True, padx=(0, 2))
         self._reset_load_button()
         
         messagebox.showerror("Error", error_msg)
         import traceback
         traceback.print_exc()
+
+
+
 
     # [新增辅助方法 4] 重置按钮
     def _reset_load_button(self):
