@@ -35,7 +35,7 @@ Despite the widespread adoption of ratiometric sensors, quantitative analysis of
 
 While commercial software packages (e.g., MetaFluor, NIS-Elements) are powerful, they are often tied to acquisition workstations via hardware dongles, limiting accessibility. Conversely, open-source alternatives have struggled to provide a modern, integrated experience. For instance, legacy ImageJ plugins like *Ratio Plus* [@Magalhaes:2004] are largely deprecated and difficult to access. Critically, these older tools often lack essential dynamic features required for modern analysis, such as adjustable Look-Up Tables (LUTs), real-time background subtraction, and motion correction.
 
-**RIA** addresses these challenges by offering a lightweight, **"all-in-one"** standalone executable. It streamlines the entire workflow—from loading raw TIFF stacks to generating publication-quality ratiometric figures or movies—without requiring complex plugin installations or script assembly. Specifically, RIA:
+**RIA** addresses these challenges by offering a lightweight, **"all-in-one"** standalone executable. It streamlines the entire workflow—from loading raw imaging stacks to generating publication-quality ratiometric figures or movies—without requiring complex plugin installations or script assembly. Specifically, RIA:
 
 1.  **Eliminates Technical Barriers**: Researchers can process data on standard personal laptops (Windows) without setting up Python environments.
 2.  **Integrates Essential Tools**: Unlike piecemeal solutions, RIA bundles motion correction (ECC), interactive thresholding, tunable visualization, and real-time ROI plotting into a single interface.
@@ -45,7 +45,7 @@ While commercial software packages (e.g., MetaFluor, NIS-Elements) are powerful,
 
 The landscape of ratiometric analysis software is currently bifurcated between highly flexible but complex open-source platforms and expensive, proprietary commercial packages.
 
-On one end of the spectrum, generalist image analysis platforms like **ImageJ/Fiji** [@Schindelin:2012] offer immense power through plugins. However, performing ratiometric analysis in ImageJ often requires a multi-step manual workflow (splitting channels, background subtraction, thresholding, and image division) or the creation of custom macros. While plugins like *Ratio Plus* exist, they often lack integrated motion correction or interactive time-lapse plotting, forcing users to switch between disparate tools. Newer Python-based ecosystems like **napari** [@Sofroniew:2022] offer modern, multidimensional viewing but typically require users to manage Python environments and dependencies, presenting a significant barrier to entry for non-computational biologists.
+On one end of the spectrum, generalist image analysis platforms like **ImageJ/Fiji** [@Schindelin:2012] offer immense power through plugins. However, performing ratiometric analysis in ImageJ often requires a multi-step manual workflow (splitting channels, background subtraction, thresholding, and image division) or the creation of custom macros. While plugins like *Ratio Plus* [@Magalhaes:2004] exist, they often lack integrated motion correction or interactive time-lapse plotting, forcing users to switch between disparate tools. Newer Python-based ecosystems like **napari** [@Sofroniew:2022] offer modern, multidimensional viewing but typically require users to manage Python environments and dependencies, presenting a significant barrier to entry for non-computational biologists.
 
 On the other end, commercial acquisition software provides robust, integrated analysis workflows. However, these solutions are frequently restricted by expensive licensing models and hardware dongles, confining data analysis to the image acquisition workstation. This creates a bottleneck where data cannot be easily analyzed on personal laptops or off-site.
 
@@ -53,7 +53,7 @@ On the other end, commercial acquisition software provides robust, integrated an
 
 # Software Design
 
-RIA is developed in Python 3, utilizing `tkinter` for a native, dependency-minimal Graphical User Interface (GUI). The software architecture separates the UI logic from the core processing engine to ensure responsiveness. Recent updates have focused on minimizing the software footprint (~73 MB) and maximizing processing speed.
+RIA is developed in Python 3, utilizing `tkinter` for a native, dependency-minimal Graphical User Interface (GUI). The software architecture separates the UI logic from the core processing engine to ensure responsiveness. Recent updates have focused on minimizing the software footprint (~60 MB) and maximizing processing speed.
 
 ![Interactive analysis workflow. Selecting a Region of Interest (ROI) on the image (left) triggers the instant calculation and plotting of the mean ratio over time (right).](images/figure2.png){width=80%}
 
@@ -69,7 +69,7 @@ Key technical features include:
 
 **RIA** is designed to accelerate quantitative biology research by democratizing access to robust image analysis tools. Its primary impact lies in lowering the technical barrier for "wet-lab" biologists, enabling them to process complex time-lapse datasets without requiring programming literacy or expensive software licenses.
 
-By facilitating the analysis of ratiometric biosensors—which are critical for monitoring intracellular Ca²⁺, pH, and ATP—RIA supports a wide range of physiological studies. A key contribution of the software is its integration of the ECC motion correction algorithm. In live imaging scenarios, such as calcium imaging in zebrafish larvae or awake mice, sample movement often corrupts ratiometric signals. RIA allows researchers to rescue these datasets through automated alignment, significantly reducing data wastage and improving the reproducibility of *in vivo* experiments.
+By facilitating the analysis of ratiometric biosensors—which are critical for monitoring intracellular Ca²⁺, pH, ATP, and other metabolites—RIA supports a wide range of physiological studies. A key contribution of the software is its integration of the ECC motion correction algorithm. In live imaging scenarios, such as calcium imaging in zebrafish larvae or awake mice, sample movement often corrupts ratiometric signals. RIA allows researchers to rescue these datasets through automated alignment, significantly reducing data wastage and improving the reproducibility of *in vivo* experiments.
 
 Furthermore, RIA promotes open science and reproducibility. By providing a standardized, verifiable pipeline for background subtraction and calculation, it offers an alternative to ad-hoc, manual processing methods that are prone to human error. The software’s portability also supports educational contexts, allowing students to learn quantitative imaging concepts on their own devices without institutional software constraints.
 
