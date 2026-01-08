@@ -195,6 +195,8 @@ class AnalysisSession:
     # [修改] 核心拆分逻辑：响应 Z-Proj 选择
     def _split_5d_to_channels(self, data_5d, z_method=None):
         channels = []
+        # data_5d shape: (T, C, Z, Y, X)
+        n_t = data_5d.shape[0]
         n_c = data_5d.shape[1]
         n_z = data_5d.shape[2]
         
@@ -209,16 +211,28 @@ class AnalysisSession:
             elif z_method == 'ave':
                 print(f"[Model] Z-Projection: AVE (AIP)")
                 data_5d = np.mean(data_5d, axis=2, keepdims=True)
-                
-            # 情况 C: 用户没选 (None)，或者选了 None
-            # 【关键修改】为了防止 GUI 崩溃，如果没有专门的 3D 查看器，默认强制做 Max 投影
+            
+            # 情况 C: 用户没选 (None)
             else:
-                print(f"[Model] Z-Stack detected ({n_z} slices) but no projection method selected.")
-                print(f"[Model] Auto-applying MAX projection to ensure visualization.")
-                data_5d = np.max(data_5d, axis=2, keepdims=True)
+                # 【新逻辑】如果 T=1 且 Z>1，这通常意味着用户想看 Z-Stack
+                # 我们把 Z 轴换到 T 轴的位置，实现“伪时间序列”播放
+                if n_t == 1:
+                    print(f"[Model] Z-Stack detected (Z={n_z}, T=1). Swapping Z to T for visualization.")
+                    # 交换 T(0) 和 Z(2) 轴
+                    # (T, C, Z, Y, X) -> (Z, C, T, Y, X)
+                    # 变换后: T'=Z, Z'=1
+                    data_5d = np.transpose(data_5d, (2, 1, 0, 3, 4))
+                else:
+                    # 如果本身就有时间序列 (T>1)，又有多层 Z，必须投影才能显示
+                    print(f"[Model] 4D Stack detected (T={n_t}, Z={n_z}) but no projection method.")
+                    print(f"[Model] Auto-applying MAX projection to ensure visualization.")
+                    data_5d = np.max(data_5d, axis=2, keepdims=True)
 
         # ---------------------------
 
+        # 此时 data_5d 的 Z 轴已经被处理（要么投影成1了，要么换到 T 轴去了）
+        # 如果是换轴操作，现在的 data_5d.shape[2] (Z) 已经是 1 了
+        
         for i in range(n_c):
             ch = data_5d[:, i, ...] # (T, Z, Y, X)
             
