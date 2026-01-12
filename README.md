@@ -189,7 +189,7 @@ Or use the BibTeX entry:
   year = {2025},
   publisher = {Zenodo},
   version = {v1.8.3},
-  doi = {10.5281/zenodo.18107966},
-  url = {[https://doi.org/10.5281/zenodo.18107966](https://doi.org/10.5281/zenodo.18107966)}
+  doi = {10.5281/zenodo.18091693},
+  url = {[https://doi.org/10.5281/zenodo.18107966](https://doi.org/10.5281/zenodo.18091693)}
 }
 ```
