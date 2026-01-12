@@ -1,6 +1,6 @@
 {
-  "title": "Ratio Imaging Analyzer (RIA): A Standalone, Zero-Dependency Tool for Robust Ratiometric Fluorescence Analysis",
-  "description": "<p><strong>Ratio Imaging Analyzer (RIA)</strong> is an open-source desktop application designed to streamline the processing of ratiometric fluorescence imaging data (e.g., FRET, Calcium, pH sensors). It bridges the gap between raw microscopy data and biological insight through a user-friendly Graphical User Interface (GUI).</p><p><strong>New in v1.8.3 - Dual-Track Architecture:</strong><br>To balance portability with professional power, RIA is now available in two editions:</p><ul><li><strong>⚡ RIA Lite (Standalone EXE):</strong> A re-engineered, ultra-compact executable optimized for instant startup and maximum portability on standard Windows PCs, perfect for standard TIFF workflows without any installation.</li><li><strong>💎 RIA Pro (Python/PyPI):</strong> The full-featured Python version that integrates comprehensive dependencies to provide native support for professional microscopy formats, including <strong>Olympus .oir</strong>, <strong>Nikon .nd2</strong>, and <strong>Zeiss .czi</strong>.</li></ul><p><strong>Key Features:</strong></p><ul><li><strong>🧠 Robust Motion Correction:</strong> Integrates the Enhanced Correlation Coefficient (ECC) algorithm to automatically align image stacks and compensate for sample drift.</li><li><strong>📉 Scientific-Grade Signal Processing:</strong> Implements custom <strong>Normalized Convolution</strong> to handle <code>NaN</code> values correctly, preventing artifacts at image boundaries and masked regions during ratio calculation.</li><li><strong>✨ High-Contrast ROI System:</strong> Features a custom multi-layered rendering engine for Regions of Interest, ensuring visibility against complex fluorescent backgrounds.</li><li><strong>📊 Analysis Unchained:</strong> Allows researchers to perform rigorous background subtraction, thresholding, and time-series extraction on personal laptops, freeing up restricted lab workstations.</li></ul>",
+  "title": "Ratio Imaging Analyzer (RIA): A Standalone, Zero-Dependency Tool for Robust Ratiometric Fluorescence Analysis (v2.0.0)",
+  "description": "<p><strong>Ratio Imaging Analyzer (RIA) v2.0.0</strong> is an open-source desktop application designed to streamline the processing of ratiometric fluorescence imaging data (e.g., FRET, Calcium, pH sensors).</p><p><strong>v2.0.0 Update Highlights:</strong><br>To balance portability with professional power, RIA is now available in two editions:</p><ul><li><strong>⚡ RIA Lite (Standalone EXE):</strong> A re-engineered, ultra-compact executable optimized for instant startup and maximum portability on standard Windows PCs.</li><li><strong>💎 RIA Pro (Python/PyPI):</strong> The full-featured Python version that integrates comprehensive dependencies including <strong>Olympus .oir</strong>, <strong>Nikon .nd2</strong>, and <strong>Zeiss .czi</strong>.</li></ul><p><strong>Key Features:</strong></p><ul><li><strong>🧠 Robust Motion Correction:</strong> Integrates the Enhanced Correlation Coefficient (ECC) algorithm.</li><li><strong>📉 Scientific-Grade Signal Processing:</strong> Implements custom <strong>Normalized Convolution</strong> to handle <code>NaN</code> values correctly.</li><li><strong>✨ High-Contrast ROI System:</strong> Features a custom multi-layered rendering engine.</li><li><strong>📊 Analysis Unchained:</strong> Allows rigorous background subtraction and time-series extraction on personal laptops.</li></ul>",
   "creators": [
     {
       "name": "Wang, Kui",
@@ -11,36 +11,10 @@
   "access_right": "open",
   "license": "MIT",
   "keywords": [
-    "Python",
-    "biology",
-    "scientific-software",
-    "GUI",
-    "imagej-alternative",
-    "microscopy",
-    "fluorescence-microscopy",
-    "bioimage-analysis",
-    "quantitative-biology",
-    "computer-vision",
-    "ratiometric-imaging",
-    "ratiometric-analysis",
-    "FRET",
-    "fret-analysis",
-    "calcium-imaging",
-    "ion-sensing",
-    "metabolic-imaging",
-    "mitochondrial-metabolism",
-    "redox-ratio",
-    "nadh-imaging",
-    "tryptophan-fluorescence",
-    "intrinsic-fluorescence",
-    "protein-conformation",
-    "autofluorescence",
-    "atp-sensor",
-    "genetically-encoded-indicator",
-    "biosensors",
-    "motion-correction",
-    "image-registration",
-    "tiff-processing"
+    "Python", "biology", "scientific-software", "GUI", "imagej-alternative",
+    "microscopy", "fluorescence-microscopy", "bioimage-analysis",
+    "quantitative-biology", "computer-vision", "ratiometric-imaging",
+    "FRET", "calcium-imaging", "biosensors", "motion-correction"
   ],
   "upload_type": "software"
 }
